@@ -1,15 +1,21 @@
 'use client';
 
 import React, { useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
-import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom';
 import { SolflareWalletAdapter } from '@solana/wallet-adapter-solflare';
-import { clusterApiUrl } from '@solana/web3.js';
 import { ThemeProvider } from 'next-themes';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { getRpcEndpoint } from '@/lib/solana/connection';
 
 import '@solana/wallet-adapter-react-ui/styles.css';
+
+// Dynamic import to avoid SSR script injection from wallet modal
+const WalletModalProvider = dynamic(
+  () => import('@solana/wallet-adapter-react-ui').then((mod) => mod.WalletModalProvider),
+  { ssr: false }
+);
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -21,7 +27,7 @@ const queryClient = new QueryClient({
 });
 
 export default function Providers({ children }: { children: React.ReactNode }) {
-  const endpoint = useMemo(() => clusterApiUrl('devnet'), []);
+  const endpoint = useMemo(() => getRpcEndpoint(), []);
   const wallets = useMemo(
     () => [new PhantomWalletAdapter(), new SolflareWalletAdapter()],
     []

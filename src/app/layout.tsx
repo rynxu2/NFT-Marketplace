@@ -3,11 +3,17 @@ import './globals.css';
 import Providers from './providers';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
+import ToastProvider from '@/components/ui/ToastProvider';
 
 export const metadata: Metadata = {
   title: 'NEXUS — NFT Marketplace on Solana',
   description: 'The futuristic NFT marketplace built on Solana. Trade, create, and collect digital assets at the speed of light.',
   keywords: ['NFT', 'marketplace', 'Solana', 'crypto', 'digital art', 'blockchain'],
+  openGraph: {
+    title: 'NEXUS — NFT Marketplace on Solana',
+    description: 'Trade, create, and collect digital assets at the speed of light.',
+    type: 'website',
+  },
 };
 
 export default function RootLayout({
@@ -37,6 +43,7 @@ export default function RootLayout({
             {children}
           </main>
           <Footer />
+          <ToastProvider />
         </Providers>
       </body>
     </html>
