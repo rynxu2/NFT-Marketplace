@@ -5,42 +5,32 @@ import { motion } from 'framer-motion';
 import { Copy, ExternalLink, Droplets, Loader2, Wallet } from 'lucide-react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import NFTGrid from '@/components/nft/NFTGrid';
+import EmptyState from '@/components/ui/EmptyState';
 import Button from '@/components/ui/Button';
-import { mockNFTs } from '@/data/mock';
 import { shortenAddress, formatSOL, getExplorerUrl, getNetwork } from '@/lib/solana/connection';
 import { useBalance, useRequestAirdrop } from '@/hooks/useBalance';
 import { useMarketplaceStore } from '@/store/useMarketplaceStore';
 import { useToastStore } from '@/store/useToastStore';
+import { useFetchNFTs, useFetchListings } from '@/hooks/useData';
 
 export default function ProfilePage({ params }: { params: Promise<{ address: string }> }) {
   const { address } = use(params);
   const { publicKey } = useWallet();
   const { balance, refresh: refreshBalance } = useBalance();
   const { airdrop, loading: airdropLoading } = useRequestAirdrop();
-  const { mintedNFTs, listings, activities } = useMarketplaceStore();
+  const { activities } = useMarketplaceStore();
   const { addToast } = useToastStore();
   const [activeTab, setActiveTab] = useState<'owned' | 'created' | 'listed' | 'activity'>('owned');
+
+  const { nfts: ownedNFTs, loading: ownedLoading } = useFetchNFTs({ owner: address });
+  const { nfts: createdNFTs, loading: createdLoading } = useFetchNFTs({ creator: address });
+  const { listings, loading: listingsLoading } = useFetchListings();
 
   const isOwnProfile = publicKey && publicKey.toBase58() === address;
   const network = getNetwork();
 
-  // Merge mock and real NFTs
-  const ownedNFTs = useMemo(() => {
-    const mock = mockNFTs.filter((_, i) => i % 2 === 0);
-    const minted = mintedNFTs.filter((n) => n.owner === address);
-    return [...minted, ...mock];
-  }, [address, mintedNFTs]);
-
-  const createdNFTs = useMemo(() => {
-    const mock = mockNFTs.filter((_, i) => i % 3 === 0);
-    const minted = mintedNFTs.filter((n) => n.creator === address);
-    return [...minted, ...mock];
-  }, [address, mintedNFTs]);
-
   const listedNFTs = useMemo(() => {
-    const storeListed = listings.filter((l) => l.seller === address).map((l) => l.nft);
-    const mockListed = mockNFTs.filter((n) => n.listed);
-    return [...storeListed, ...mockListed];
+    return listings.filter((l) => l.seller === address).map((l) => l.nft);
   }, [address, listings]);
 
   const profileActivities = useMemo(() => {
@@ -48,6 +38,7 @@ export default function ProfilePage({ params }: { params: Promise<{ address: str
   }, [address, activities]);
 
   const nfts = activeTab === 'owned' ? ownedNFTs : activeTab === 'created' ? createdNFTs : listedNFTs;
+  const isLoading = activeTab === 'owned' ? ownedLoading : activeTab === 'created' ? createdLoading : listingsLoading;
 
   const tabs = [
     { id: 'owned' as const, label: 'Owned', count: ownedNFTs.length },
@@ -217,11 +208,19 @@ export default function ProfilePage({ params }: { params: Promise<{ address: str
               ))}
             </div>
           ) : (
-            <p className="px-4 py-8 text-sm text-[var(--text-secondary)] text-center">No activity yet</p>
+            <EmptyState variant="activity" />
           )}
         </div>
       ) : (
-        <NFTGrid nfts={nfts} />
+        <NFTGrid
+          nfts={nfts}
+          loading={isLoading}
+          emptyMessage={
+            activeTab === 'owned' ? 'No NFTs owned yet'
+            : activeTab === 'created' ? 'No NFTs created yet'
+            : 'No NFTs listed for sale'
+          }
+        />
       )}
     </div>
   );

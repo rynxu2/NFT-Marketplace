@@ -62,3 +62,35 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { mint, owner, listed, price } = body;
+
+    if (!mint) {
+      return NextResponse.json({ error: 'mint is required' }, { status: 400 });
+    }
+
+    const updates: Record<string, unknown> = {};
+    if (owner !== undefined) updates.owner = owner;
+    if (listed !== undefined) updates.listed = listed;
+    if (price !== undefined) updates.price = price;
+
+    const { data, error } = await supabase
+      .from('nfts')
+      .update(updates)
+      .eq('mint', mint)
+      .select()
+      .single();
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ data });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to update NFT';
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}

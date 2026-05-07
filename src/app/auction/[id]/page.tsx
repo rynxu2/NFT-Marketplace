@@ -10,29 +10,49 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Badge from '@/components/ui/Badge';
 import Countdown from '@/components/auction/Countdown';
-import { mockAuctions } from '@/data/mock';
-import { formatSOL, shortenAddress, timeAgo, getExplorerUrl } from '@/lib/solana/connection';
+import EmptyState from '@/components/ui/EmptyState';
+import { formatSOL, shortenAddress, timeAgo } from '@/lib/solana/connection';
 import { SOL_PRICE_USD } from '@/lib/constants';
-import { useMarketplaceStore } from '@/store/useMarketplaceStore';
 import { usePlaceBid, useSettleAuction } from '@/hooks/useAuction';
 import { useBalance } from '@/hooks/useBalance';
+import { useFetchAuctions } from '@/hooks/useData';
 
 export default function AuctionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { publicKey } = useWallet();
-  const { auctions: storeAuctions } = useMarketplaceStore();
   const { bid: placeBidFn } = usePlaceBid();
   const { settle } = useSettleAuction();
   const { balance } = useBalance();
+  const { auctions, loading } = useFetchAuctions();
 
   const [bidAmount, setBidAmount] = useState('');
   const [processing, setProcessing] = useState(false);
 
-  // Find auction from store or mock data
-  const auction = useMemo(
-    () => storeAuctions.find((a) => a.id === id) || mockAuctions.find((a) => a.id === id) || mockAuctions[0],
-    [id, storeAuctions]
-  );
+  const auction = useMemo(() => auctions.find((a) => a.id === id), [id, auctions]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 size={24} className="animate-spin text-[var(--accent)]" />
+      </div>
+    );
+  }
+
+  if (!auction) {
+    return (
+      <div className="max-w-[80rem] mx-auto px-4 sm:px-6 py-10">
+        <Link href="/" className="inline-flex items-center gap-2 text-sm text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors mb-6">
+          <ArrowLeft size={16} />
+          Back
+        </Link>
+        <EmptyState
+          variant="auction"
+          title="Auction Not Found"
+          description="This auction doesn't exist or has been removed."
+        />
+      </div>
+    );
+  }
 
   const isEnded = new Date(auction.endTime).getTime() <= Date.now();
   const isSeller = publicKey && auction.seller === publicKey.toBase58();

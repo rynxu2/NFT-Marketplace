@@ -83,6 +83,13 @@ export async function apiGetNFTs(params?: {
   return request<{ data: unknown[] }>(`/api/nfts?${query.toString()}`);
 }
 
+export async function apiUpdateNFT(data: { mint: string; owner?: string; listed?: boolean; price?: number | null }) {
+  return request('/api/nfts', {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
 // --- Listings ---
 
 export interface APICreateListing {

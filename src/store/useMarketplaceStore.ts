@@ -27,6 +27,7 @@ interface MarketplaceState {
   settleAuction: (auctionId: string) => void;
   addActivity: (activity: Activity) => void;
   addMintedNFT: (nft: NFT) => void;
+  updateNFTOwner: (mint: string, newOwner: string) => void;
 }
 
 export const useMarketplaceStore = create<MarketplaceState>()(
@@ -81,6 +82,13 @@ export const useMarketplaceStore = create<MarketplaceState>()(
       addMintedNFT: (nft) =>
         set((state) => ({
           mintedNFTs: [nft, ...state.mintedNFTs],
+        })),
+
+      updateNFTOwner: (mint, newOwner) =>
+        set((state) => ({
+          mintedNFTs: state.mintedNFTs.map((n) =>
+            n.mint === mint ? { ...n, owner: newOwner, listed: false, price: undefined } : n
+          ),
         })),
     }),
     {

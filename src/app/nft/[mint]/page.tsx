@@ -9,45 +9,46 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Input from '@/components/ui/Input';
-import { mockNFTs, mockActivities } from '@/data/mock';
+import EmptyState from '@/components/ui/EmptyState';
+import NFTCard from '@/components/nft/NFTCard';
 import { formatSOL, shortenAddress, timeAgo, getExplorerUrl } from '@/lib/solana/connection';
 import { SOL_PRICE_USD } from '@/lib/constants';
 import { useMarketplaceStore } from '@/store/useMarketplaceStore';
 import { useListNFT, useBuyNFT, useCancelListing } from '@/hooks/useMarketplace';
+import { useFetchNFTs, useFetchActivities } from '@/hooks/useData';
 
 export default function NFTDetailPage({ params }: { params: Promise<{ mint: string }> }) {
   const { mint } = use(params);
   const { publicKey } = useWallet();
-  const { listings, mintedNFTs, activities: storeActivities } = useMarketplaceStore();
+  const { listings } = useMarketplaceStore();
   const { list } = useListNFT();
   const { buy } = useBuyNFT();
   const { cancel } = useCancelListing();
+
+  const { nfts: allNFTs, loading: nftsLoading } = useFetchNFTs();
+  const { activities: allActivities } = useFetchActivities({ nftMint: mint });
 
   const [showListForm, setShowListForm] = useState(false);
   const [listPrice, setListPrice] = useState('');
   const [processing, setProcessing] = useState(false);
 
-  // Find NFT from mock data or minted NFTs
-  const nft = mintedNFTs.find((n) => n.mint === mint) || mockNFTs.find((n) => n.mint === mint) || mockNFTs[0];
+  // Find NFT from fetched data
+  const nft = allNFTs.find((n) => n.mint === mint);
 
   // Check if listed in the marketplace store
-  const listing = listings.find((l) => l.mint === nft.mint);
+  const listing = listings.find((l) => l.mint === mint);
   const isListed = !!listing;
 
   // Check if current user is the owner
-  const isOwner = publicKey && nft.owner === publicKey.toBase58();
+  const isOwner = publicKey && nft?.owner === publicKey.toBase58();
 
-  // Merge activities
-  const allActivities = [
-    ...storeActivities.filter((a) => a.nftMint === nft.mint),
-    ...mockActivities.filter((a) => a.nftMint === nft.mint),
-  ].slice(0, 8);
-
-  const relatedNFTs = mockNFTs
-    .filter((n) => n.collection === nft.collection && n.mint !== nft.mint)
-    .slice(0, 4);
+  // Related NFTs from same collection
+  const relatedNFTs = nft?.collection
+    ? allNFTs.filter((n) => n.collection === nft.collection && n.mint !== nft.mint).slice(0, 4)
+    : [];
 
   const handleList = async () => {
+    if (!nft) return;
     const price = parseFloat(listPrice);
     if (isNaN(price) || price <= 0) return;
     setProcessing(true);
@@ -70,6 +71,33 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
     await cancel(listing);
     setProcessing(false);
   };
+
+  // Loading state
+  if (nftsLoading) {
+    return (
+      <div className="max-w-[80rem] mx-auto px-4 sm:px-6 py-10">
+        <div className="flex items-center justify-center py-20">
+          <Loader2 size={24} className="animate-spin text-[var(--accent)]" />
+        </div>
+      </div>
+    );
+  }
+
+  // NFT not found
+  if (!nft) {
+    return (
+      <div className="max-w-[80rem] mx-auto px-4 sm:px-6 py-10">
+        <Link
+          href="/explore"
+          className="inline-flex items-center gap-2 text-sm text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors mb-6"
+        >
+          <ArrowLeft size={16} />
+          Back to Explore
+        </Link>
+        <EmptyState variant="nft" />
+      </div>
+    );
+  }
 
   const displayPrice = listing?.price || nft.price;
   const displayListed = isListed || nft.listed;
@@ -102,24 +130,26 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
           </div>
 
           {/* Attributes */}
-          <div className="mt-4 bg-[var(--bg-secondary)] border border-[var(--border-color)] p-4">
-            <h3 className="text-xs font-[family-name:var(--font-display)] uppercase tracking-wider text-[var(--accent)] mb-3">
-              Attributes
-            </h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {nft.attributes.map((attr) => (
-                <div
-                  key={attr.trait_type}
-                  className="bg-[var(--bg-primary)] border border-[var(--border-color)] p-3 text-center"
-                >
-                  <p className="text-[9px] text-[var(--text-secondary)] uppercase tracking-wider mb-1">
-                    {attr.trait_type}
-                  </p>
-                  <p className="text-xs font-semibold text-[var(--text-primary)]">{attr.value}</p>
-                </div>
-              ))}
+          {nft.attributes.length > 0 && (
+            <div className="mt-4 bg-[var(--bg-secondary)] border border-[var(--border-color)] p-4">
+              <h3 className="text-xs font-[family-name:var(--font-display)] uppercase tracking-wider text-[var(--accent)] mb-3">
+                Attributes
+              </h3>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {nft.attributes.map((attr) => (
+                  <div
+                    key={attr.trait_type}
+                    className="bg-[var(--bg-primary)] border border-[var(--border-color)] p-3 text-center"
+                  >
+                    <p className="text-[9px] text-[var(--text-secondary)] uppercase tracking-wider mb-1">
+                      {attr.trait_type}
+                    </p>
+                    <p className="text-xs font-semibold text-[var(--text-primary)]">{attr.value}</p>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </motion.div>
 
         {/* Right: Details */}
@@ -252,7 +282,7 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
             </div>
             {allActivities.length > 0 ? (
               <div className="divide-y divide-[var(--border-color)]">
-                {allActivities.map((act) => (
+                {allActivities.slice(0, 8).map((act) => (
                   <div key={act.id} className="px-4 py-3 flex items-center justify-between">
                     <div>
                       <Badge
@@ -300,33 +330,7 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {relatedNFTs.map((n, i) => (
-              <Link key={n.mint} href={`/nft/${n.mint}`} className="block">
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: i * 0.05 }}
-                  className="bg-[var(--bg-secondary)] border border-[var(--border-color)] overflow-hidden hover:border-[var(--accent)]/40 transition-all group"
-                >
-                  <div className="relative aspect-square overflow-hidden">
-                    <Image
-                      src={n.image}
-                      alt={n.name}
-                      fill
-                      sizes="25vw"
-                      className="object-cover group-hover:scale-105 transition-transform duration-500"
-                    />
-                  </div>
-                  <div className="p-3">
-                    <p className="text-xs font-semibold truncate">{n.name}</p>
-                    {n.price && (
-                      <p className="text-xs font-[family-name:var(--font-mono)] text-[var(--accent)] mt-1">
-                        ◎ {formatSOL(n.price)}
-                      </p>
-                    )}
-                  </div>
-                </motion.div>
-              </Link>
+              <NFTCard key={n.mint} nft={n} index={i} />
             ))}
           </div>
         </section>

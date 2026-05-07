@@ -1,21 +1,65 @@
 'use client';
 
-import React, { use } from 'react';
+import React, { use, useMemo } from 'react';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
-import { ArrowLeft, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import NFTGrid from '@/components/nft/NFTGrid';
-import { mockCollections, mockNFTs } from '@/data/mock';
+import EmptyState from '@/components/ui/EmptyState';
 import { formatSOL, shortenAddress } from '@/lib/solana/connection';
+import { useFetchNFTs } from '@/hooks/useData';
 
 export default function CollectionPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
-  const collection = mockCollections.find((c) => c.slug === slug) || mockCollections[0];
-  const collectionNFTs = mockNFTs.filter((n) => n.collectionSlug === slug);
+  const { nfts: allNFTs, loading } = useFetchNFTs();
+
+  // Derive collection data from NFTs
+  const collectionNFTs = useMemo(() => {
+    return allNFTs.filter((n) => n.collectionSlug === slug);
+  }, [allNFTs, slug]);
+
+  const collection = useMemo(() => {
+    if (collectionNFTs.length === 0) return null;
+    const first = collectionNFTs[0];
+    const prices = collectionNFTs.filter((n) => n.price).map((n) => n.price!);
+    return {
+      name: first.collection || slug,
+      creator: first.creator,
+      description: `A collection of ${collectionNFTs.length} NFTs on the NEXUS marketplace.`,
+      image: first.image,
+      stats: {
+        floorPrice: prices.length > 0 ? Math.min(...prices) : 0,
+        totalVolume: prices.reduce((sum, p) => sum + p, 0),
+        items: collectionNFTs.length,
+        owners: new Set(collectionNFTs.map((n) => n.owner)).size,
+        listed: collectionNFTs.filter((n) => n.listed).length,
+      },
+    };
+  }, [collectionNFTs, slug]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 size={24} className="animate-spin text-[var(--accent)]" />
+      </div>
+    );
+  }
+
+  if (!collection) {
+    return (
+      <div className="max-w-[80rem] mx-auto px-4 sm:px-6 py-10">
+        <Link href="/explore" className="inline-flex items-center gap-2 text-sm text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors mb-4">
+          <ArrowLeft size={16} />
+          Back
+        </Link>
+        <EmptyState variant="collection" />
+      </div>
+    );
+  }
 
   const statItems = [
-    { label: 'Floor Price', value: `◎ ${collection.stats.floorPrice}` },
+    { label: 'Floor Price', value: collection.stats.floorPrice > 0 ? `◎ ${collection.stats.floorPrice}` : '—' },
     { label: 'Total Volume', value: `◎ ${formatSOL(collection.stats.totalVolume)}` },
     { label: 'Items', value: collection.stats.items.toString() },
     { label: 'Owners', value: collection.stats.owners.toString() },
@@ -27,7 +71,7 @@ export default function CollectionPage({ params }: { params: Promise<{ slug: str
       {/* Banner */}
       <div className="relative h-48 sm:h-64">
         <Image
-          src={collection.banner}
+          src={collection.image}
           alt={collection.name}
           fill
           sizes="100vw"
@@ -60,14 +104,9 @@ export default function CollectionPage({ params }: { params: Promise<{ slug: str
               />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-bold">
-                  {collection.name}
-                </h1>
-                {collection.verified && (
-                  <CheckCircle size={18} className="text-[var(--accent)]" />
-                )}
-              </div>
+              <h1 className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-bold">
+                {collection.name}
+              </h1>
               <p className="text-xs font-[family-name:var(--font-mono)] text-[var(--text-secondary)]">
                 by {shortenAddress(collection.creator)}
               </p>

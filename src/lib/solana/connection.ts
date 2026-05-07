@@ -84,11 +84,63 @@ export async function requestAirdrop(
   if (net !== 'devnet') {
     throw new Error('Airdrop is only available on devnet');
   }
+
+  // Clamp to max 2 SOL per request (devnet limit)
+  const clampedAmount = Math.min(amountSol, 2);
   const conn = getConnection('devnet');
   const pubkey = new PublicKey(address);
-  const signature = await conn.requestAirdrop(pubkey, amountSol * LAMPORTS_PER_SOL);
-  await conn.confirmTransaction(signature, 'confirmed');
-  return signature;
+
+  // Strategy 1: Standard RPC requestAirdrop
+  try {
+    const signature = await conn.requestAirdrop(
+      pubkey,
+      clampedAmount * LAMPORTS_PER_SOL
+    );
+    await conn.confirmTransaction(signature, 'confirmed');
+    return signature;
+  } catch {
+    // RPC airdrop failed (rate-limited), try web faucet
+  }
+
+  // Strategy 2: Solana Web Faucet API
+  try {
+    const res = await fetch('https://faucet.solana.com/api/fund', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        wallet: address,
+        network: 'devnet',
+        amount: clampedAmount,
+      }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data.signature) {
+        await conn.confirmTransaction(data.signature, 'confirmed');
+        return data.signature;
+      }
+    }
+  } catch {
+    // Web faucet also failed
+  }
+
+  // Strategy 3: Retry RPC with smaller amount (0.5 SOL)
+  try {
+    const smallAmount = Math.min(clampedAmount, 0.5);
+    const signature = await conn.requestAirdrop(
+      pubkey,
+      smallAmount * LAMPORTS_PER_SOL
+    );
+    await conn.confirmTransaction(signature, 'confirmed');
+    return signature;
+  } catch {
+    // All strategies failed
+  }
+
+  throw new Error(
+    'Devnet airdrop rate-limited. Try again in a few minutes, or use https://faucet.solana.com manually.'
+  );
 }
 
 export function isValidPublicKey(address: string): boolean {

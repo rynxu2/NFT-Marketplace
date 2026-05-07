@@ -16,6 +16,18 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: '*.ipfs.nftstorage.link',
       },
+      {
+        protocol: 'https',
+        hostname: 'gateway.pinata.cloud',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.mypinata.cloud',
+      },
+      {
+        protocol: 'https',
+        hostname: 'ipfs.io',
+      },
     ],
   },
   turbopack: {},

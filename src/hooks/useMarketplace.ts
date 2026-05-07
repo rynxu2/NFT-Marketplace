@@ -3,7 +3,7 @@
 import { useCallback } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { listNFT, buyNFT, cancelListing } from '@/lib/solana/marketplace';
-import { apiCreateListing, apiCancelListing, apiCreateActivity } from '@/lib/api';
+import { apiCreateListing, apiCancelListing, apiCreateActivity, apiUpdateNFT } from '@/lib/api';
 import { useToastStore } from '@/store/useToastStore';
 import { useMarketplaceStore, type Listing } from '@/store/useMarketplaceStore';
 import type { NFT } from '@/types/nft';
@@ -68,7 +68,7 @@ export function useListNFT() {
 export function useBuyNFT() {
   const wallet = useWallet();
   const { addToast } = useToastStore();
-  const { removeListing } = useMarketplaceStore();
+  const { removeListing, updateNFTOwner } = useMarketplaceStore();
 
   const buy = useCallback(
     async (listing: Listing) => {
@@ -82,6 +82,8 @@ export function useBuyNFT() {
         return null;
       }
 
+      const buyerAddress = wallet.publicKey.toBase58();
+
       try {
         addToast('Processing purchase...', 'info', undefined, 3000);
 
@@ -92,20 +94,33 @@ export function useBuyNFT() {
           price: listing.price,
         });
 
-        // Update database
+        // Update NFT owner in database
+        await apiUpdateNFT({
+          mint: listing.mint,
+          owner: buyerAddress,
+          listed: false,
+          price: null,
+        }).catch(() => {});
+
+        // Deactivate listing in database
         await apiCancelListing(listing.mint).catch(() => {});
+
+        // Log sale activity
         await apiCreateActivity({
           type: 'sale',
           nft_mint: listing.mint,
           nft_name: listing.nft.name,
           nft_image: listing.nft.image,
           from_address: listing.seller,
-          to_address: wallet.publicKey.toBase58(),
+          to_address: buyerAddress,
           price: listing.price,
           tx_signature: result.txSignature,
         }).catch(() => {});
 
+        // Update local store for instant UI
         removeListing(listing.mint);
+        updateNFTOwner(listing.mint, buyerAddress);
+
         addToast(`Purchased "${listing.nft.name}" for ◎ ${listing.price}!`, 'success', result.txSignature);
         return result;
       } catch (err) {
@@ -114,7 +129,7 @@ export function useBuyNFT() {
         return null;
       }
     },
-    [wallet, addToast, removeListing]
+    [wallet, addToast, removeListing, updateNFTOwner]
   );
 
   return { buy };

@@ -62,7 +62,11 @@ export function useRequestAirdrop() {
         addToast(`Received ${amountSol} SOL!`, 'success', signature);
         return signature;
       } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Airdrop failed';
+        const raw = err instanceof Error ? err.message : 'Airdrop failed';
+        // Simplify common Solana error messages for users
+        const msg = raw.includes('rate-limit') || raw.includes('Internal error')
+          ? 'Devnet rate-limited. Try again in a few minutes or use faucet.solana.com'
+          : raw;
         addToast(msg, 'error');
         return null;
       } finally {

@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import { Search, SlidersHorizontal } from 'lucide-react';
 import NFTGrid from '@/components/nft/NFTGrid';
 import Input from '@/components/ui/Input';
-import { mockNFTs } from '@/data/mock';
+import { useFetchNFTs } from '@/hooks/useData';
 import { CATEGORIES, SORT_OPTIONS } from '@/lib/constants';
 import type { SortOption } from '@/types/nft';
 
@@ -14,9 +14,10 @@ export default function ExplorePage() {
   const [category, setCategory] = useState('All');
   const [sortBy, setSortBy] = useState<SortOption>('recent');
   const [showFilters, setShowFilters] = useState(false);
+  const { nfts: allNFTs, loading } = useFetchNFTs();
 
   const filteredNFTs = useMemo(() => {
-    let result = [...mockNFTs];
+    let result = [...allNFTs];
 
     if (search) {
       const q = search.toLowerCase();
@@ -28,7 +29,7 @@ export default function ExplorePage() {
     if (category !== 'All') {
       result = result.filter((n) => {
         const col = n.collection?.toLowerCase() || '';
-        return col.includes(category.toLowerCase()) || Math.random() > 0.5;
+        return col.includes(category.toLowerCase());
       });
     }
 
@@ -53,7 +54,7 @@ export default function ExplorePage() {
     }
 
     return result;
-  }, [search, category, sortBy]);
+  }, [allNFTs, search, category, sortBy]);
 
   return (
     <div className="max-w-[80rem] mx-auto px-4 sm:px-6 py-10">
@@ -67,7 +68,7 @@ export default function ExplorePage() {
           Explore NFTs
         </h1>
         <p className="text-sm text-[var(--text-secondary)]">
-          Browse and discover digital collectibles from the Cyber Nexus universe
+          Browse and discover digital collectibles
         </p>
       </motion.div>
 
@@ -122,7 +123,7 @@ export default function ExplorePage() {
       </p>
 
       {/* NFT Grid */}
-      <NFTGrid nfts={filteredNFTs} />
+      <NFTGrid nfts={filteredNFTs} loading={loading} emptyMessage="No NFTs found. Be the first to mint one!" />
     </div>
   );
 }

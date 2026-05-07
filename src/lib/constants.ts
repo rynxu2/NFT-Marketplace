@@ -1,6 +1,6 @@
 export const MARKETPLACE_NAME = 'NEXUS';
 export const MARKETPLACE_DESCRIPTION = 'The Futuristic NFT Marketplace on Solana';
-export const SOL_PRICE_USD = 170; // Mock SOL price for display
+export const SOL_PRICE_USD = 170;
 
 export const CATEGORIES = [
   'All',
