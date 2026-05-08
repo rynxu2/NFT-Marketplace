@@ -4,7 +4,7 @@ import React, { use, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { ArrowLeft, ExternalLink, Heart, Share2, ShoppingCart, Tag, DollarSign, Loader2 } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Heart, Share2, ShoppingCart, Tag, DollarSign, Loader2, Gavel, Clock } from 'lucide-react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
@@ -15,6 +15,7 @@ import { formatSOL, shortenAddress, timeAgo, getExplorerUrl } from '@/lib/solana
 import { SOL_PRICE_USD } from '@/lib/constants';
 import { useMarketplaceStore } from '@/store/useMarketplaceStore';
 import { useListNFT, useBuyNFT, useCancelListing } from '@/hooks/useMarketplace';
+import { useCreateAuction } from '@/hooks/useAuction';
 import { useFetchNFTs, useFetchActivities } from '@/hooks/useData';
 
 export default function NFTDetailPage({ params }: { params: Promise<{ mint: string }> }) {
@@ -23,13 +24,18 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
   const { listings } = useMarketplaceStore();
   const { list } = useListNFT();
   const { buy } = useBuyNFT();
+  const { create: createAuction } = useCreateAuction();
   const { cancel } = useCancelListing();
 
   const { nfts: allNFTs, loading: nftsLoading } = useFetchNFTs();
   const { activities: allActivities } = useFetchActivities({ nftMint: mint });
 
   const [showListForm, setShowListForm] = useState(false);
+  const [showAuctionForm, setShowAuctionForm] = useState(false);
   const [listPrice, setListPrice] = useState('');
+  const [auctionPrice, setAuctionPrice] = useState('');
+  const [auctionDuration, setAuctionDuration] = useState('24');
+  const [auctionIncrement, setAuctionIncrement] = useState('0.5');
   const [processing, setProcessing] = useState(false);
 
   // Find NFT from fetched data
@@ -56,6 +62,21 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
     setProcessing(false);
     setShowListForm(false);
     setListPrice('');
+  };
+
+  const handleCreateAuction = async () => {
+    if (!nft) return;
+    const price = parseFloat(auctionPrice);
+    const duration = parseInt(auctionDuration);
+    const increment = parseFloat(auctionIncrement);
+    if (isNaN(price) || price <= 0 || isNaN(duration) || duration <= 0) return;
+    setProcessing(true);
+    const result = await createAuction(nft, price, duration, increment || 0.5);
+    setProcessing(false);
+    if (result) {
+      setShowAuctionForm(false);
+      setAuctionPrice('');
+    }
   };
 
   const handleBuy = async () => {
@@ -252,11 +273,53 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
                     </Button>
                   </div>
                 </div>
+              ) : showAuctionForm ? (
+                <div className="bg-[var(--bg-secondary)] border border-[var(--color-signal-orange)]/20 p-6 space-y-4">
+                  <h4 className="text-xs font-[family-name:var(--font-display)] uppercase tracking-wider text-[var(--color-signal-orange)] mb-1">Create Auction</h4>
+                  <Input
+                    label="Starting Price (SOL)"
+                    type="number"
+                    placeholder="e.g., 1.0"
+                    value={auctionPrice}
+                    onChange={(e) => setAuctionPrice(e.target.value)}
+                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input
+                      label="Duration (hours)"
+                      type="number"
+                      placeholder="24"
+                      value={auctionDuration}
+                      onChange={(e) => setAuctionDuration(e.target.value)}
+                    />
+                    <Input
+                      label="Min Increment (SOL)"
+                      type="number"
+                      placeholder="0.5"
+                      value={auctionIncrement}
+                      onChange={(e) => setAuctionIncrement(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex gap-3">
+                    <Button size="lg" className="flex-1" onClick={handleCreateAuction} loading={processing}>
+                      <Gavel size={16} />
+                      {processing ? 'CREATING...' : 'START AUCTION'}
+                    </Button>
+                    <Button variant="secondary" size="lg" onClick={() => setShowAuctionForm(false)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
               ) : (
-                <Button size="lg" className="w-full" onClick={() => setShowListForm(true)}>
-                  <Tag size={16} />
-                  LIST FOR SALE
-                </Button>
+                <div className="flex gap-3">
+                  <Button size="lg" className="flex-1" onClick={() => setShowListForm(true)}>
+                    <Tag size={16} />
+                    LIST FOR SALE
+                  </Button>
+                  <Button size="lg" variant="secondary" className="flex-1" onClick={() => setShowAuctionForm(true)}>
+                    <Gavel size={16} />
+                    CREATE AUCTION
+                  </Button>
+                </div>
               )}
             </div>
           )}

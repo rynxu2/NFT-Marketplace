@@ -14,6 +14,7 @@ import { useBalance } from '@/hooks/useBalance';
 const NAV_LINKS = [
   { href: '/', label: 'HOME' },
   { href: '/explore', label: 'EXPLORE' },
+  { href: '/auctions', label: 'AUCTIONS' },
   { href: '/create', label: 'CREATE' },
   { href: '/activity', label: 'ACTIVITY' },
 ];
