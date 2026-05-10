@@ -1,10 +1,19 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { NFT } from '@/types/nft';
 import type { Auction, Bid } from '@/types/auction';
 import type { Activity, ActivityType } from '@/types/activity';
-import { useMarketplaceStore, type Listing } from '@/store/useMarketplaceStore';
+import type { Listing } from '@/store/useMarketplaceStore';
+
+// ─── Query Keys ─────────────────────────────────────────────
+
+export const queryKeys = {
+  nfts: (params?: Record<string, string | undefined>) => ['nfts', params] as const,
+  listings: () => ['listings'] as const,
+  auctions: () => ['auctions'] as const,
+  activities: (params?: Record<string, string | undefined>) => ['activities', params] as const,
+};
 
 // ─── Supabase → Client Type Mappers ────────────────────────
 
@@ -113,136 +122,84 @@ function mapSupabaseAuction(row: Record<string, unknown>): Auction {
   };
 }
 
-// ─── Fetcher Helpers ────────────────────────────────────────
+// ─── Fetcher ────────────────────────────────────────────────
 
 async function fetchJSON<T>(url: string): Promise<T[]> {
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return [];
-    const json = await res.json();
-    return json.data || [];
-  } catch {
-    return [];
-  }
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`API Error: ${res.status}`);
+  const json = await res.json();
+  return json.data || [];
 }
 
-// ─── Hooks ──────────────────────────────────────────────────
+// ─── Hooks (React Query) ────────────────────────────────────
 
 export function useFetchNFTs(params?: { owner?: string; creator?: string; collection?: string; search?: string }) {
-  const [nfts, setNfts] = useState<NFT[]>([]);
-  const [loading, setLoading] = useState(true);
-  const { mintedNFTs } = useMarketplaceStore();
+  const query = new URLSearchParams();
+  if (params?.owner) query.set('owner', params.owner);
+  if (params?.creator) query.set('creator', params.creator);
+  if (params?.collection) query.set('collection', params.collection);
+  if (params?.search) query.set('search', params.search);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    const query = new URLSearchParams();
-    if (params?.owner) query.set('owner', params.owner);
-    if (params?.creator) query.set('creator', params.creator);
-    if (params?.collection) query.set('collection', params.collection);
-    if (params?.search) query.set('search', params.search);
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: queryKeys.nfts(params as Record<string, string | undefined>),
+    queryFn: () => fetchJSON<Record<string, unknown>>(`/api/nfts?${query.toString()}`).then(rows => rows.map(mapSupabaseNFT)),
+  });
 
-    const rows = await fetchJSON<Record<string, unknown>>(`/api/nfts?${query.toString()}`);
-    const mapped = rows.map(mapSupabaseNFT);
-
-    // Merge with local store (dedup by mint)
-    const remoteMints = new Set(mapped.map((n) => n.mint));
-    const localOnly = mintedNFTs.filter((n) => !remoteMints.has(n.mint));
-    let merged = [...mapped, ...localOnly];
-
-    // Apply client-side filters for local NFTs
-    if (params?.owner) merged = merged.filter((n) => n.owner === params.owner);
-    if (params?.creator) merged = merged.filter((n) => n.creator === params.creator);
-
-    setNfts(merged);
-    setLoading(false);
-  }, [params?.owner, params?.creator, params?.collection, params?.search, mintedNFTs]);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  return { nfts, loading, refresh };
+  return { nfts: data || [], loading: isLoading, refresh: refetch };
 }
 
 export function useFetchListings() {
-  const [listings, setListings] = useState<Listing[]>([]);
-  const [loading, setLoading] = useState(true);
-  const { listings: storeListings } = useMarketplaceStore();
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: queryKeys.listings(),
+    queryFn: () => fetchJSON<Record<string, unknown>>('/api/listings').then(rows => rows.map(mapSupabaseListing)),
+  });
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    const rows = await fetchJSON<Record<string, unknown>>('/api/listings');
-    const mapped = rows.map(mapSupabaseListing);
-
-    // Merge with local store
-    const remoteMints = new Set(mapped.map((l) => l.mint));
-    const localOnly = storeListings.filter((l) => !remoteMints.has(l.mint));
-
-    setListings([...mapped, ...localOnly]);
-    setLoading(false);
-  }, [storeListings]);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  return { listings, loading, refresh };
+  return { listings: data || [], loading: isLoading, refresh: refetch };
 }
 
-export function useFetchAuctions() {
-  const [auctions, setAuctions] = useState<Auction[]>([]);
-  const [loading, setLoading] = useState(true);
-  const { auctions: storeAuctions } = useMarketplaceStore();
+export function useFetchAuctions(options?: { pollingInterval?: number }) {
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: queryKeys.auctions(),
+    queryFn: () => fetchJSON<Record<string, unknown>>('/api/auctions').then(rows => rows.map(mapSupabaseAuction)),
+    refetchInterval: options?.pollingInterval,
+  });
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    const rows = await fetchJSON<Record<string, unknown>>('/api/auctions');
-    const mapped = rows.map(mapSupabaseAuction);
-
-    // Merge with local store
-    const remoteIds = new Set(mapped.map((a) => a.id));
-    const localOnly = storeAuctions.filter((a) => !remoteIds.has(a.id));
-
-    setAuctions([...mapped, ...localOnly]);
-    setLoading(false);
-  }, [storeAuctions]);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  return { auctions, loading, refresh };
+  return { auctions: data || [], loading: isLoading, refresh: refetch };
 }
 
 export function useFetchActivities(params?: { type?: string; nftMint?: string; limit?: number }) {
-  const [activities, setActivities] = useState<Activity[]>([]);
-  const [loading, setLoading] = useState(true);
-  const { activities: storeActivities } = useMarketplaceStore();
+  const query = new URLSearchParams();
+  if (params?.type) query.set('type', params.type);
+  if (params?.nftMint) query.set('nft_mint', params.nftMint);
+  if (params?.limit) query.set('limit', String(params.limit));
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    const query = new URLSearchParams();
-    if (params?.type) query.set('type', params.type);
-    if (params?.nftMint) query.set('nft_mint', params.nftMint);
-    if (params?.limit) query.set('limit', String(params.limit));
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: queryKeys.activities(params as Record<string, string | undefined>),
+    queryFn: () => fetchJSON<Record<string, unknown>>(`/api/activities?${query.toString()}`).then(rows => rows.map(mapSupabaseActivity)),
+  });
 
-    const rows = await fetchJSON<Record<string, unknown>>(`/api/activities?${query.toString()}`);
-    const mapped = rows.map(mapSupabaseActivity);
+  return { activities: data || [], loading: isLoading, refresh: refetch };
+}
 
-    // Merge with local store
-    const remoteIds = new Set(mapped.map((a) => a.id));
-    let localOnly = storeActivities.filter((a) => !remoteIds.has(a.id));
+// ─── Invalidation Helper ────────────────────────────────────
 
-    if (params?.type) localOnly = localOnly.filter((a) => a.type === params.type);
-    if (params?.nftMint) localOnly = localOnly.filter((a) => a.nftMint === params.nftMint);
+/**
+ * Hook to invalidate all marketplace data queries.
+ * Call after any mutation (mint, list, buy, bid, settle).
+ */
+export function useInvalidateQueries() {
+  const queryClient = useQueryClient();
 
-    setActivities([...mapped, ...localOnly]);
-    setLoading(false);
-  }, [params?.type, params?.nftMint, params?.limit, storeActivities]);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  return { activities, loading, refresh };
+  return {
+    invalidateAll: () => {
+      queryClient.invalidateQueries({ queryKey: ['nfts'] });
+      queryClient.invalidateQueries({ queryKey: ['listings'] });
+      queryClient.invalidateQueries({ queryKey: ['auctions'] });
+      queryClient.invalidateQueries({ queryKey: ['activities'] });
+    },
+    invalidateNFTs: () => queryClient.invalidateQueries({ queryKey: ['nfts'] }),
+    invalidateListings: () => queryClient.invalidateQueries({ queryKey: ['listings'] }),
+    invalidateAuctions: () => queryClient.invalidateQueries({ queryKey: ['auctions'] }),
+    invalidateActivities: () => queryClient.invalidateQueries({ queryKey: ['activities'] }),
+  };
 }

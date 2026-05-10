@@ -1,9 +1,9 @@
 'use client';
 
-import React, { use, useState, useMemo } from 'react';
+import React, { use, useState, useMemo, useCallback, useEffect } from 'react';
 import Image from 'next/image';
-import { motion } from 'framer-motion';
-import { ArrowLeft, Gavel, Shield, Loader2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ArrowLeft, Gavel, Shield, Loader2, Trophy, Clock, CheckCircle2, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import { useWallet } from '@solana/wallet-adapter-react';
 import Button from '@/components/ui/Button';
@@ -23,12 +23,31 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
   const { bid: placeBidFn } = usePlaceBid();
   const { settle } = useSettleAuction();
   const { balance } = useBalance();
-  const { auctions, loading } = useFetchAuctions();
+
+  // Poll every 5s for live bid updates (stops when settled)
+  const [isSettledState, setIsSettledState] = useState(false);
+  const { auctions, loading, refresh } = useFetchAuctions({
+    pollingInterval: isSettledState ? 0 : 5000,
+  });
 
   const [bidAmount, setBidAmount] = useState('');
   const [processing, setProcessing] = useState(false);
+  const [auctionEnded, setAuctionEnded] = useState(false);
 
   const auction = useMemo(() => auctions.find((a) => a.id === id), [id, auctions]);
+
+  // Stop polling when auction is settled
+  useEffect(() => {
+    if (auction?.status === 'settled') {
+      setIsSettledState(true);
+    }
+  }, [auction?.status]);
+
+  // Callback when countdown reaches zero — refresh data and set ended flag
+  const handleCountdownEnd = useCallback(() => {
+    setAuctionEnded(true);
+    refresh();
+  }, [refresh]);
 
   if (loading) {
     return (
@@ -54,9 +73,11 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
     );
   }
 
-  const isEnded = new Date(auction.endTime).getTime() <= Date.now();
+  const isEnded = auctionEnded || new Date(auction.endTime).getTime() <= Date.now();
   const isSeller = publicKey && auction.seller === publicKey.toBase58();
   const isHighestBidder = publicKey && auction.highestBidder === publicKey.toBase58();
+  const isSettled = auction.status === 'settled';
+  const canSettle = isEnded && !isSettled && auction.highestBidder && (isSeller || isHighestBidder);
   const minBid = auction.currentBid + auction.minBidIncrement;
 
   const handleBid = async () => {
@@ -66,12 +87,15 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
     await placeBidFn(auction, amount);
     setProcessing(false);
     setBidAmount('');
+    refresh();
   };
 
   const handleSettle = async () => {
     setProcessing(true);
     await settle(auction);
     setProcessing(false);
+    setIsSettledState(true); // Stop polling
+    refresh();
   };
 
   return (
@@ -98,14 +122,32 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
                 priority
               />
             </div>
+
+            {/* Settled overlay */}
+            <AnimatePresence>
+              {isSettled && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="absolute inset-0 bg-black/60 flex items-center justify-center"
+                >
+                  <div className="text-center">
+                    <CheckCircle2 size={48} className="text-[var(--color-electric-lime)] mx-auto mb-2" />
+                    <p className="text-sm font-[family-name:var(--font-display)] uppercase tracking-wider text-[var(--color-electric-lime)]">
+                      Settled
+                    </p>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </motion.div>
 
         {/* Auction Info */}
         <motion.div initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 }}>
-          <Badge variant={isEnded ? (auction.status === 'settled' ? 'info' : 'danger') : 'warning'} size="md">
-            <Gavel size={12} />
-            {auction.status === 'settled' ? 'SETTLED' : isEnded ? 'ENDED' : 'LIVE AUCTION'}
+          <Badge variant={isSettled ? 'success' : isEnded ? 'danger' : 'warning'} size="md">
+            {isSettled ? <CheckCircle2 size={12} /> : isEnded ? <Clock size={12} /> : <Gavel size={12} />}
+            {isSettled ? 'SETTLED' : isEnded ? 'ENDED — AWAITING SETTLEMENT' : 'LIVE AUCTION'}
           </Badge>
 
           <h1 className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-bold mt-3 mb-2">
@@ -117,9 +159,52 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
           {!isEnded && (
             <div className="bg-[var(--bg-secondary)] border border-[var(--color-signal-orange)]/20 p-6 mb-6">
               <p className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider mb-3">Auction Ends In</p>
-              <Countdown endTime={auction.endTime} size="lg" />
+              <Countdown endTime={auction.endTime} size="lg" onEnd={handleCountdownEnd} />
             </div>
           )}
+
+          {/* Winner Banner — shown when ended and there IS a highest bidder */}
+          <AnimatePresence>
+            {isEnded && auction.highestBidder && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`p-5 mb-6 border ${
+                  isSettled
+                    ? 'bg-[var(--color-electric-lime)]/10 border-[var(--color-electric-lime)]/30'
+                    : 'bg-[var(--color-signal-orange)]/10 border-[var(--color-signal-orange)]/30'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <Trophy size={24} className={isSettled ? 'text-[var(--color-electric-lime)]' : 'text-[var(--color-signal-orange)]'} />
+                  <div className="flex-1">
+                    {isHighestBidder ? (
+                      <>
+                        <p className="text-sm font-[family-name:var(--font-display)] uppercase tracking-wider font-bold text-[var(--color-electric-lime)]">
+                          🏆 You Won This Auction!
+                        </p>
+                        <p className="text-xs text-[var(--text-secondary)] mt-1">
+                          {isSettled
+                            ? 'NFT has been transferred to your wallet. Check your profile!'
+                            : 'Click "Claim NFT" below to finalize the transfer.'}
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-sm font-[family-name:var(--font-display)] uppercase tracking-wider font-bold text-[var(--text-primary)]">
+                          Auction {isSettled ? 'Settled' : 'Ended'}
+                        </p>
+                        <p className="text-xs text-[var(--text-secondary)] mt-1">
+                          Winner: <span className="font-[family-name:var(--font-mono)] text-[var(--accent)]">{shortenAddress(auction.highestBidder)}</span>
+                          {' '}at <span className="font-[family-name:var(--font-mono)] text-[var(--color-signal-orange)]">◎ {formatSOL(auction.currentBid)}</span>
+                        </p>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Current Bid */}
           <div className="bg-[var(--bg-secondary)] border border-[var(--border-color)] p-6 mb-6">
@@ -179,23 +264,77 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
               </div>
             )}
 
-            {/* Settle button (for seller when auction ended) */}
-            {isEnded && isSeller && auction.status !== 'settled' && auction.highestBidder && (
-              <Button size="lg" className="w-full mt-4" onClick={handleSettle} loading={processing}>
-                <Shield size={16} />
-                {processing ? 'SETTLING...' : 'SETTLE AUCTION'}
-              </Button>
+            {/* Settlement Actions */}
+            {canSettle && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-4 space-y-3"
+              >
+                {/* Seller settle button */}
+                {isSeller && (
+                  <Button size="lg" className="w-full" onClick={handleSettle} loading={processing}>
+                    <Shield size={16} />
+                    {processing ? 'SETTLING...' : 'SETTLE AUCTION'}
+                  </Button>
+                )}
+
+                {/* Winner claim button */}
+                {isHighestBidder && !isSeller && (
+                  <Button
+                    size="lg"
+                    className="w-full"
+                    onClick={handleSettle}
+                    loading={processing}
+                    style={{
+                      background: 'linear-gradient(135deg, var(--color-signal-orange), var(--color-electric-lime))',
+                      color: '#000',
+                    }}
+                  >
+                    <Trophy size={16} />
+                    {processing ? 'CLAIMING...' : '🏆 CLAIM YOUR NFT'}
+                  </Button>
+                )}
+
+                {/* Info about what settlement does */}
+                <div className="flex items-start gap-2 p-3 bg-[var(--bg-primary)] border border-[var(--border-color)]">
+                  <AlertTriangle size={14} className="text-[var(--color-signal-orange)] shrink-0 mt-0.5" />
+                  <p className="text-[10px] text-[var(--text-secondary)] leading-relaxed">
+                    {isSeller
+                      ? 'Settling will transfer the NFT to the winner and finalize the auction.'
+                      : 'Claiming will transfer the NFT to your wallet. The seller has already received payment.'}
+                  </p>
+                </div>
+              </motion.div>
             )}
 
-            {/* Status messages */}
-            {isEnded && auction.status === 'settled' && (
-              <div className="mt-4 p-3 bg-[var(--color-electric-lime)]/10 border border-[var(--color-electric-lime)]/30 text-center">
-                <p className="text-xs text-[var(--color-electric-lime)] font-[family-name:var(--font-display)] uppercase tracking-wider">
-                  Auction Settled
-                </p>
-              </div>
+            {/* Status: Settled */}
+            {isSettled && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="mt-4 p-4 bg-[var(--color-electric-lime)]/10 border border-[var(--color-electric-lime)]/30"
+              >
+                <div className="flex items-center gap-2 justify-center">
+                  <CheckCircle2 size={16} className="text-[var(--color-electric-lime)]" />
+                  <p className="text-xs text-[var(--color-electric-lime)] font-[family-name:var(--font-display)] uppercase tracking-wider font-bold">
+                    Auction Settled — NFT Transferred
+                  </p>
+                </div>
+                {isHighestBidder && (
+                  <p className="text-center mt-2">
+                    <Link
+                      href={`/profile/${publicKey!.toBase58()}`}
+                      className="text-xs text-[var(--accent)] hover:underline font-[family-name:var(--font-display)] uppercase tracking-wider"
+                    >
+                      View in Your Profile →
+                    </Link>
+                  </p>
+                )}
+              </motion.div>
             )}
 
+            {/* Ended with no bids */}
             {isEnded && !auction.highestBidder && (
               <div className="mt-4 p-3 bg-[var(--color-crimson)]/10 border border-[var(--color-crimson)]/30 text-center">
                 <p className="text-xs text-[var(--color-crimson)]">
@@ -204,6 +343,7 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
               </div>
             )}
 
+            {/* You're highest bidder while live */}
             {isHighestBidder && !isEnded && (
               <div className="mt-3 p-2 bg-[var(--color-electric-lime)]/10 border border-[var(--color-electric-lime)]/30 text-center">
                 <p className="text-[10px] text-[var(--color-electric-lime)]">You are the highest bidder!</p>
@@ -233,6 +373,11 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
                           {shortenAddress(bid.bidder)}
                           {publicKey && bid.bidder === publicKey.toBase58() && (
                             <span className="text-[var(--accent)] ml-1">(You)</span>
+                          )}
+                          {isEnded && i === 0 && (
+                            <span className="text-[var(--color-electric-lime)] ml-1">
+                              <Trophy size={10} className="inline -mt-0.5" /> Winner
+                            </span>
                           )}
                         </p>
                         <p className="text-[10px] text-[var(--text-secondary)]">{timeAgo(bid.timestamp)}</p>

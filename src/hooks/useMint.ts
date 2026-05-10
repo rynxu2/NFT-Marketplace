@@ -5,7 +5,7 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { apiUploadImage, apiUploadMetadata, apiCreateNFT, apiCreateActivity } from '@/lib/api';
 import { mintNFT } from '@/lib/solana/mint';
 import { useToastStore } from '@/store/useToastStore';
-import { useMarketplaceStore } from '@/store/useMarketplaceStore';
+import { useInvalidateQueries } from '@/hooks/useData';
 import type { NFT } from '@/types/nft';
 
 export type MintStep = 'idle' | 'uploading-image' | 'uploading-metadata' | 'minting' | 'success' | 'error';
@@ -30,7 +30,7 @@ interface MintResult {
 export function useMintNFT() {
   const wallet = useWallet();
   const { addToast } = useToastStore();
-  const { addMintedNFT } = useMarketplaceStore();
+  const { invalidateAll } = useInvalidateQueries();
   const [step, setStep] = useState<MintStep>('idle');
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<MintResult | null>(null);
@@ -46,14 +46,14 @@ export function useMintNFT() {
       setResult(null);
 
       try {
-        // Step 1: Upload image to IPFS via server API
+        // Step 1: Upload image
         setStep('uploading-image');
-        addToast('Uploading image to IPFS...', 'info', undefined, 3000);
+        addToast('Uploading image...', 'info', undefined, 3000);
 
         const imageResult = await apiUploadImage(params.file);
         const imageUri = imageResult.url;
 
-        // Step 2: Upload metadata to IPFS via server API
+        // Step 2: Upload metadata to IPFS
         setStep('uploading-metadata');
 
         const metadata = {
@@ -91,52 +91,44 @@ export function useMintNFT() {
           imageUri,
         };
 
-        // Save to database via API
-        const nft: NFT = {
-          mint: mintResult.mintAddress,
-          name: params.name,
-          symbol: params.symbol,
-          description: params.description,
-          image: imageUri,
-          owner: wallet.publicKey.toBase58(),
-          creator: wallet.publicKey.toBase58(),
-          listed: false,
-          collection: params.collection,
-          attributes: params.attributes,
-          createdAt: new Date().toISOString(),
-        };
-
         // Save to Supabase
-        await apiCreateNFT({
-          mint: mintResult.mintAddress,
-          name: params.name,
-          symbol: params.symbol,
-          description: params.description,
-          image: imageUri,
-          owner: wallet.publicKey.toBase58(),
-          creator: wallet.publicKey.toBase58(),
-          collection: params.collection,
-          attributes: params.attributes,
-          metadata_uri: metadataUri,
-          tx_signature: mintResult.txSignature,
-        }).catch(() => {
-          // Silently fail DB save — NFT is still minted on-chain
-        });
+        try {
+          await apiCreateNFT({
+            mint: mintResult.mintAddress,
+            name: params.name,
+            symbol: params.symbol,
+            description: params.description,
+            image: imageUri,
+            owner: wallet.publicKey.toBase58(),
+            creator: wallet.publicKey.toBase58(),
+            collection: params.collection,
+            attributes: params.attributes,
+            metadata_uri: metadataUri,
+            tx_signature: mintResult.txSignature,
+          });
+        } catch (dbErr) {
+          console.error('Failed to save NFT to database:', dbErr);
+          addToast('NFT minted on-chain but database sync failed', 'warning');
+        }
 
         // Log activity
-        await apiCreateActivity({
-          type: 'mint',
-          nft_mint: mintResult.mintAddress,
-          nft_name: params.name,
-          nft_image: imageUri,
-          from_address: wallet.publicKey.toBase58(),
-          to_address: wallet.publicKey.toBase58(),
-          tx_signature: mintResult.txSignature,
-          collection: params.collection,
-        }).catch(() => {});
+        try {
+          await apiCreateActivity({
+            type: 'mint',
+            nft_mint: mintResult.mintAddress,
+            nft_name: params.name,
+            nft_image: imageUri,
+            from_address: wallet.publicKey.toBase58(),
+            to_address: wallet.publicKey.toBase58(),
+            tx_signature: mintResult.txSignature,
+            collection: params.collection,
+          });
+        } catch (dbErr) {
+          console.error('Failed to log mint activity:', dbErr);
+        }
 
-        // Also keep in local store for instant UI
-        addMintedNFT(nft);
+        // Invalidate React Query cache → all pages auto-refresh
+        invalidateAll();
 
         setStep('success');
         setResult(finalResult);
@@ -151,7 +143,7 @@ export function useMintNFT() {
         return null;
       }
     },
-    [wallet, addToast, addMintedNFT]
+    [wallet, addToast, invalidateAll]
   );
 
   const reset = useCallback(() => {

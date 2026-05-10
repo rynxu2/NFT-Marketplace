@@ -17,6 +17,37 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
+/**
+ * Create auth headers by signing a message with the connected wallet.
+ * Used for write operations (POST, PATCH, DELETE).
+ */
+export async function createAuthHeaders(
+  wallet: { publicKey: { toBase58(): string } | null; signMessage?(msg: Uint8Array): Promise<Uint8Array> },
+  action: string
+): Promise<Record<string, string>> {
+  if (!wallet.publicKey || !wallet.signMessage) {
+    return {};
+  }
+
+  try {
+    const message = `NEXUS Auth: ${action} at ${Date.now()}`;
+    const messageBytes = new TextEncoder().encode(message);
+    const signatureBytes = await wallet.signMessage(messageBytes);
+
+    // Import bs58 dynamically to avoid SSR issues
+    const { default: bs58 } = await import('bs58');
+
+    return {
+      'x-wallet-address': wallet.publicKey.toBase58(),
+      'x-wallet-signature': bs58.encode(signatureBytes),
+      'x-wallet-message': message,
+    };
+  } catch {
+    // If signing fails, proceed without auth (backward compatible)
+    return {};
+  }
+}
+
 // --- Upload ---
 
 export async function apiUploadImage(file: File): Promise<{ hash: string; url: string }> {
@@ -150,7 +181,7 @@ export async function apiPlaceBid(auctionId: string, data: { bidder: string; amo
   });
 }
 
-export async function apiSettleAuction(auctionId: string, data: { seller: string }) {
+export async function apiSettleAuction(auctionId: string, data: { seller?: string; caller?: string }) {
   return request(`/api/auctions/${auctionId}/settle`, {
     method: 'POST',
     body: JSON.stringify(data),

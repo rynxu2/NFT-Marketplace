@@ -5,13 +5,14 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { listNFT, buyNFT, cancelListing } from '@/lib/solana/marketplace';
 import { apiCreateListing, apiCancelListing, apiCreateActivity, apiUpdateNFT } from '@/lib/api';
 import { useToastStore } from '@/store/useToastStore';
-import { useMarketplaceStore, type Listing } from '@/store/useMarketplaceStore';
+import { useInvalidateQueries } from '@/hooks/useData';
 import type { NFT } from '@/types/nft';
+import type { Listing } from '@/store/useMarketplaceStore';
 
 export function useListNFT() {
   const wallet = useWallet();
   const { addToast } = useToastStore();
-  const { addListing } = useMarketplaceStore();
+  const { invalidateAll } = useInvalidateQueries();
 
   const list = useCallback(
     async (nft: NFT, price: number) => {
@@ -30,26 +31,36 @@ export function useListNFT() {
         });
 
         // Save to database
-        await apiCreateListing({
-          mint: nft.mint,
-          seller: wallet.publicKey.toBase58(),
-          price,
-          tx_signature: result.txSignature,
-          nft_name: nft.name,
-          nft_image: nft.image,
-        }).catch(() => {});
+        try {
+          await apiCreateListing({
+            mint: nft.mint,
+            seller: wallet.publicKey.toBase58(),
+            price,
+            tx_signature: result.txSignature,
+            nft_name: nft.name,
+            nft_image: nft.image,
+          });
+        } catch (dbErr) {
+          console.error('Failed to save listing to database:', dbErr);
+          addToast('Listing created but sync failed', 'warning');
+        }
 
-        // Local store for instant UI
-        const listing: Listing = {
-          id: `listing-${Date.now()}`,
-          mint: nft.mint,
-          seller: wallet.publicKey.toBase58(),
-          price,
-          nft: { ...nft, listed: true, price },
-          listedAt: new Date().toISOString(),
-          txSignature: result.txSignature,
-        };
-        addListing(listing);
+        // Log activity
+        try {
+          await apiCreateActivity({
+            type: 'listing',
+            nft_mint: nft.mint,
+            nft_name: nft.name,
+            nft_image: nft.image,
+            from_address: wallet.publicKey.toBase58(),
+            price,
+            tx_signature: result.txSignature,
+          });
+        } catch (dbErr) {
+          console.error('Failed to log listing activity:', dbErr);
+        }
+
+        invalidateAll();
 
         addToast(`Listed "${nft.name}" for ◎ ${price}`, 'success', result.txSignature);
         return result;
@@ -59,7 +70,7 @@ export function useListNFT() {
         return null;
       }
     },
-    [wallet, addToast, addListing]
+    [wallet, addToast, invalidateAll]
   );
 
   return { list };
@@ -68,7 +79,7 @@ export function useListNFT() {
 export function useBuyNFT() {
   const wallet = useWallet();
   const { addToast } = useToastStore();
-  const { removeListing, updateNFTOwner } = useMarketplaceStore();
+  const { invalidateAll } = useInvalidateQueries();
 
   const buy = useCallback(
     async (listing: Listing) => {
@@ -95,31 +106,42 @@ export function useBuyNFT() {
         });
 
         // Update NFT owner in database
-        await apiUpdateNFT({
-          mint: listing.mint,
-          owner: buyerAddress,
-          listed: false,
-          price: null,
-        }).catch(() => {});
+        try {
+          await apiUpdateNFT({
+            mint: listing.mint,
+            owner: buyerAddress,
+            listed: false,
+            price: null,
+          });
+        } catch (dbErr) {
+          console.error('Failed to update NFT owner:', dbErr);
+          addToast('Purchase succeeded but ownership sync failed', 'warning');
+        }
 
-        // Deactivate listing in database
-        await apiCancelListing(listing.mint).catch(() => {});
+        // Deactivate listing
+        try {
+          await apiCancelListing(listing.mint);
+        } catch (dbErr) {
+          console.error('Failed to deactivate listing:', dbErr);
+        }
 
         // Log sale activity
-        await apiCreateActivity({
-          type: 'sale',
-          nft_mint: listing.mint,
-          nft_name: listing.nft.name,
-          nft_image: listing.nft.image,
-          from_address: listing.seller,
-          to_address: buyerAddress,
-          price: listing.price,
-          tx_signature: result.txSignature,
-        }).catch(() => {});
+        try {
+          await apiCreateActivity({
+            type: 'sale',
+            nft_mint: listing.mint,
+            nft_name: listing.nft.name,
+            nft_image: listing.nft.image,
+            from_address: listing.seller,
+            to_address: buyerAddress,
+            price: listing.price,
+            tx_signature: result.txSignature,
+          });
+        } catch (dbErr) {
+          console.error('Failed to log sale activity:', dbErr);
+        }
 
-        // Update local store for instant UI
-        removeListing(listing.mint);
-        updateNFTOwner(listing.mint, buyerAddress);
+        invalidateAll();
 
         addToast(`Purchased "${listing.nft.name}" for ◎ ${listing.price}!`, 'success', result.txSignature);
         return result;
@@ -129,7 +151,7 @@ export function useBuyNFT() {
         return null;
       }
     },
-    [wallet, addToast, removeListing, updateNFTOwner]
+    [wallet, addToast, invalidateAll]
   );
 
   return { buy };
@@ -138,7 +160,7 @@ export function useBuyNFT() {
 export function useCancelListing() {
   const wallet = useWallet();
   const { addToast } = useToastStore();
-  const { removeListing } = useMarketplaceStore();
+  const { invalidateAll } = useInvalidateQueries();
 
   const cancel = useCallback(
     async (listing: Listing) => {
@@ -154,9 +176,14 @@ export function useCancelListing() {
         });
 
         // Update database
-        await apiCancelListing(listing.mint).catch(() => {});
+        try {
+          await apiCancelListing(listing.mint);
+        } catch (dbErr) {
+          console.error('Failed to cancel listing in database:', dbErr);
+          addToast('Listing cancelled but sync failed', 'warning');
+        }
 
-        removeListing(listing.mint);
+        invalidateAll();
         addToast(`Cancelled listing for "${listing.nft.name}"`, 'info', result.txSignature);
         return result;
       } catch (err) {
@@ -165,7 +192,7 @@ export function useCancelListing() {
         return null;
       }
     },
-    [wallet, addToast, removeListing]
+    [wallet, addToast, invalidateAll]
   );
 
   return { cancel };

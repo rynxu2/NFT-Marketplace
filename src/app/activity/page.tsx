@@ -4,7 +4,7 @@ import React, { useState, useMemo } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { ArrowUpRight, ArrowDownLeft, Gavel, Tag, Repeat, Sparkles, XCircle, Activity as ActivityIcon, Loader2 } from 'lucide-react';
+import { ArrowUpRight, ArrowDownLeft, Gavel, Tag, Repeat, Sparkles, XCircle, Trophy, Activity as ActivityIcon, Loader2 } from 'lucide-react';
 import Badge from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
 import { shortenAddress, timeAgo, formatSOL } from '@/lib/solana/connection';
@@ -20,6 +20,7 @@ const TYPE_CONFIG: Record<ActivityType, { icon: React.ElementType; label: string
   cancel: { icon: XCircle, label: 'Cancelled', variant: 'danger' },
   auction_created: { icon: Gavel, label: 'Auction', variant: 'warning' },
   auction_settled: { icon: ArrowDownLeft, label: 'Settled', variant: 'success' },
+  auction_won: { icon: Trophy, label: 'Won', variant: 'success' },
 };
 
 const FILTER_TYPES: { value: string; label: string }[] = [

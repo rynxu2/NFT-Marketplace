@@ -12,7 +12,8 @@ import { formatSOL, shortenAddress } from '@/lib/solana/connection';
 import { useFetchAuctions } from '@/hooks/useData';
 
 export default function AuctionsPage() {
-  const { auctions, loading } = useFetchAuctions();
+  // Poll every 10s to keep auction prices up-to-date
+  const { auctions, loading } = useFetchAuctions({ pollingInterval: 10000 });
 
   return (
     <div className="max-w-[80rem] mx-auto px-4 sm:px-6 py-10">

@@ -1,4 +1,4 @@
-export type ActivityType = 'sale' | 'listing' | 'bid' | 'transfer' | 'mint' | 'cancel' | 'auction_created' | 'auction_settled';
+export type ActivityType = 'sale' | 'listing' | 'bid' | 'transfer' | 'mint' | 'cancel' | 'auction_created' | 'auction_settled' | 'auction_won';
 
 export interface Activity {
   id: string;

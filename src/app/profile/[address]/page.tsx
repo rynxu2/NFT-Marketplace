@@ -2,29 +2,33 @@
 
 import React, { use, useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Copy, ExternalLink, Droplets, Loader2, Wallet } from 'lucide-react';
+import { Copy, ExternalLink, Droplets, Loader2, Wallet, Trophy, Gavel } from 'lucide-react';
+import Link from 'next/link';
+import Image from 'next/image';
 import { useWallet } from '@solana/wallet-adapter-react';
 import NFTGrid from '@/components/nft/NFTGrid';
 import EmptyState from '@/components/ui/EmptyState';
 import Button from '@/components/ui/Button';
+import Badge from '@/components/ui/Badge';
 import { shortenAddress, formatSOL, getExplorerUrl, getNetwork } from '@/lib/solana/connection';
+import { SOL_PRICE_USD } from '@/lib/constants';
 import { useBalance, useRequestAirdrop } from '@/hooks/useBalance';
-import { useMarketplaceStore } from '@/store/useMarketplaceStore';
 import { useToastStore } from '@/store/useToastStore';
-import { useFetchNFTs, useFetchListings } from '@/hooks/useData';
+import { useFetchNFTs, useFetchListings, useFetchAuctions, useFetchActivities } from '@/hooks/useData';
 
 export default function ProfilePage({ params }: { params: Promise<{ address: string }> }) {
   const { address } = use(params);
   const { publicKey } = useWallet();
   const { balance, refresh: refreshBalance } = useBalance();
   const { airdrop, loading: airdropLoading } = useRequestAirdrop();
-  const { activities } = useMarketplaceStore();
   const { addToast } = useToastStore();
-  const [activeTab, setActiveTab] = useState<'owned' | 'created' | 'listed' | 'activity'>('owned');
+  const [activeTab, setActiveTab] = useState<'owned' | 'created' | 'listed' | 'won' | 'activity'>('owned');
 
   const { nfts: ownedNFTs, loading: ownedLoading } = useFetchNFTs({ owner: address });
   const { nfts: createdNFTs, loading: createdLoading } = useFetchNFTs({ creator: address });
   const { listings, loading: listingsLoading } = useFetchListings();
+  const { auctions, loading: auctionsLoading } = useFetchAuctions();
+  const { activities } = useFetchActivities();
 
   const isOwnProfile = publicKey && publicKey.toBase58() === address;
   const network = getNetwork();
@@ -32,6 +36,13 @@ export default function ProfilePage({ params }: { params: Promise<{ address: str
   const listedNFTs = useMemo(() => {
     return listings.filter((l) => l.seller === address).map((l) => l.nft);
   }, [address, listings]);
+
+  // Won auctions: where this user is the highest bidder and auction is settled
+  const wonAuctions = useMemo(() => {
+    return auctions.filter(
+      (a) => a.highestBidder === address && (a.status === 'settled' || a.status === 'ended')
+    );
+  }, [address, auctions]);
 
   const profileActivities = useMemo(() => {
     return activities.filter((a) => a.from === address || a.to === address).slice(0, 20);
@@ -44,6 +55,7 @@ export default function ProfilePage({ params }: { params: Promise<{ address: str
     { id: 'owned' as const, label: 'Owned', count: ownedNFTs.length },
     { id: 'created' as const, label: 'Created', count: createdNFTs.length },
     { id: 'listed' as const, label: 'Listed', count: listedNFTs.length },
+    { id: 'won' as const, label: 'Won', count: wonAuctions.length },
     { id: 'activity' as const, label: 'Activity', count: profileActivities.length },
   ];
 
@@ -129,11 +141,12 @@ export default function ProfilePage({ params }: { params: Promise<{ address: str
           </div>
 
           {/* Stats */}
-          <div className="grid grid-cols-3 gap-6">
+          <div className="grid grid-cols-4 gap-6">
             {[
               { label: 'Owned', val: ownedNFTs.length },
               { label: 'Created', val: createdNFTs.length },
               { label: 'Listed', val: listedNFTs.length },
+              { label: 'Won', val: wonAuctions.length },
             ].map((s) => (
               <div key={s.label} className="text-center">
                 <p className="font-[family-name:var(--font-mono)] text-lg font-bold">{s.val}</p>
@@ -145,17 +158,18 @@ export default function ProfilePage({ params }: { params: Promise<{ address: str
       </motion.div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-1 mb-6 border-b border-[var(--border-color)]">
+      <div className="flex items-center gap-1 mb-6 border-b border-[var(--border-color)] overflow-x-auto">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`relative px-5 py-3 text-xs font-[family-name:var(--font-display)] uppercase tracking-wider transition-colors cursor-pointer ${
+            className={`relative px-5 py-3 text-xs font-[family-name:var(--font-display)] uppercase tracking-wider transition-colors cursor-pointer whitespace-nowrap ${
               activeTab === tab.id
                 ? 'text-[var(--accent)]'
                 : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
             }`}
           >
+            {tab.id === 'won' && <Trophy size={10} className="inline mr-1 -mt-0.5" />}
             {tab.label}
             <span className="ml-1.5 text-[10px] font-[family-name:var(--font-mono)]">({tab.count})</span>
             {activeTab === tab.id && (
@@ -182,10 +196,12 @@ export default function ProfilePage({ params }: { params: Promise<{ address: str
                           ? 'bg-[var(--color-electric-lime)]/20 text-[var(--color-electric-lime)]'
                           : act.type === 'mint'
                             ? 'bg-[var(--accent)]/20 text-[var(--accent)]'
-                            : 'bg-[var(--color-signal-orange)]/20 text-[var(--color-signal-orange)]'
+                            : act.type === 'auction_won'
+                              ? 'bg-[var(--color-signal-orange)]/20 text-[var(--color-signal-orange)]'
+                              : 'bg-[var(--color-signal-orange)]/20 text-[var(--color-signal-orange)]'
                       }`}
                     >
-                      {act.type}
+                      {act.type === 'auction_won' ? '🏆 WON' : act.type === 'auction_settled' ? 'SETTLED' : act.type}
                     </span>
                     <p className="text-xs text-[var(--text-primary)] mt-1">{act.nftName}</p>
                   </div>
@@ -209,6 +225,76 @@ export default function ProfilePage({ params }: { params: Promise<{ address: str
             </div>
           ) : (
             <EmptyState variant="activity" />
+          )}
+        </div>
+      ) : activeTab === 'won' ? (
+        /* Won Auctions Tab */
+        <div>
+          {auctionsLoading ? (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 size={24} className="animate-spin text-[var(--accent)]" />
+            </div>
+          ) : wonAuctions.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {wonAuctions.map((auction, index) => (
+                <motion.div
+                  key={auction.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.05 }}
+                >
+                  <Link href={`/auction/${auction.id}`} className="block group">
+                    <div className="bg-[var(--bg-secondary)] border border-[var(--border-color)] overflow-hidden transition-all duration-300 group-hover:border-[var(--color-signal-orange)]/50 group-hover:shadow-[0_0_20px_rgba(255,107,43,0.15)]">
+                      <div className="relative aspect-square">
+                        <Image
+                          src={auction.nft.image}
+                          alt={auction.nft.name}
+                          fill
+                          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                          className="object-cover group-hover:scale-105 transition-transform duration-500"
+                        />
+                        <div className="absolute top-2 left-2">
+                          <Badge variant={auction.status === 'settled' ? 'success' : 'warning'} size="sm">
+                            <Trophy size={10} />
+                            {auction.status === 'settled' ? 'CLAIMED' : 'PENDING'}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="p-4">
+                        <h3 className="text-sm font-semibold text-[var(--text-primary)] group-hover:text-[var(--color-signal-orange)] transition-colors mb-1">
+                          {auction.nft.name}
+                        </h3>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider">Won at</p>
+                            <p className="text-base font-[family-name:var(--font-mono)] font-bold text-[var(--color-signal-orange)]">
+                              ◎ {formatSOL(auction.currentBid)}
+                            </p>
+                            <p className="text-[10px] text-[var(--text-secondary)]">
+                              ≈ ${(auction.currentBid * SOL_PRICE_USD).toFixed(2)}
+                            </p>
+                          </div>
+                          {auction.status !== 'settled' && (
+                            <div className="text-right">
+                              <Badge variant="danger" size="sm">
+                                <Gavel size={10} />
+                                CLAIM
+                              </Badge>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </Link>
+                </motion.div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              variant="auction"
+              title="No Won Auctions"
+              description="You haven't won any auctions yet. Start bidding to win NFTs!"
+            />
           )}
         </div>
       ) : (

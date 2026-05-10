@@ -188,8 +188,47 @@ export default function Header() {
                   {link.label}
                 </Link>
               ))}
-              <div className="pt-3 border-t border-[var(--border-color)] mt-2">
-                <WalletMultiButton />
+
+              {/* Mobile wallet info */}
+              {connected && publicKey && (
+                <Link
+                  href={`/profile/${publicKey.toBase58()}`}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center gap-3 px-4 py-3 mt-2 border border-[var(--border-color)] bg-[var(--bg-primary)]"
+                >
+                  <div className="w-2 h-2 rounded-full bg-[var(--color-electric-lime)] animate-pulse" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] text-[var(--text-secondary)] uppercase">Wallet</p>
+                    <p className="text-xs font-[family-name:var(--font-mono)] text-[var(--accent)] truncate">
+                      {shortenAddress(publicKey.toBase58())}
+                    </p>
+                  </div>
+                  {balance !== null && (
+                    <span className="text-xs font-[family-name:var(--font-mono)] text-[var(--text-primary)]">
+                      ◎{formatSOL(balance)}
+                    </span>
+                  )}
+                </Link>
+              )}
+
+              {/* Mobile network + theme */}
+              <div className="flex items-center gap-3 pt-3 mt-2 border-t border-[var(--border-color)]">
+                <span className={`px-2 py-0.5 text-[9px] font-[family-name:var(--font-mono)] font-bold uppercase tracking-wider ${
+                  network === 'devnet'
+                    ? 'bg-[var(--color-signal-orange)]/20 text-[var(--color-signal-orange)]'
+                    : 'bg-[var(--color-electric-lime)]/20 text-[var(--color-electric-lime)]'
+                }`}>
+                  {network === 'devnet' ? 'DEVNET' : 'MAINNET'}
+                </span>
+                <button
+                  onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                  className="p-2 text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors cursor-pointer"
+                >
+                  {mounted ? (theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />) : <Sun size={16} />}
+                </button>
+                <div className="ml-auto">
+                  <WalletMultiButton />
+                </div>
               </div>
             </nav>
           </motion.div>

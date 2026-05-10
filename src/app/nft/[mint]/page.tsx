@@ -1,49 +1,83 @@
 'use client';
 
-import React, { use, useState } from 'react';
+import React, { use, useState, useCallback, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { ArrowLeft, ExternalLink, Heart, Share2, ShoppingCart, Tag, DollarSign, Loader2, Gavel, Clock } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Heart, Share2, ShoppingCart, Tag, DollarSign, Loader2, Gavel, Clock, Send, Check, Copy } from 'lucide-react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Input from '@/components/ui/Input';
 import EmptyState from '@/components/ui/EmptyState';
 import NFTCard from '@/components/nft/NFTCard';
+import TransferModal from '@/components/nft/TransferModal';
+import PriceChart from '@/components/nft/PriceChart';
 import { formatSOL, shortenAddress, timeAgo, getExplorerUrl } from '@/lib/solana/connection';
 import { SOL_PRICE_USD } from '@/lib/constants';
-import { useMarketplaceStore } from '@/store/useMarketplaceStore';
 import { useListNFT, useBuyNFT, useCancelListing } from '@/hooks/useMarketplace';
 import { useCreateAuction } from '@/hooks/useAuction';
-import { useFetchNFTs, useFetchActivities } from '@/hooks/useData';
+import { useFetchNFTs, useFetchListings, useFetchActivities } from '@/hooks/useData';
 
 export default function NFTDetailPage({ params }: { params: Promise<{ mint: string }> }) {
   const { mint } = use(params);
   const { publicKey } = useWallet();
-  const { listings } = useMarketplaceStore();
   const { list } = useListNFT();
   const { buy } = useBuyNFT();
   const { create: createAuction } = useCreateAuction();
   const { cancel } = useCancelListing();
 
   const { nfts: allNFTs, loading: nftsLoading } = useFetchNFTs();
+  const { listings: allListings } = useFetchListings();
   const { activities: allActivities } = useFetchActivities({ nftMint: mint });
 
   const [showListForm, setShowListForm] = useState(false);
   const [showAuctionForm, setShowAuctionForm] = useState(false);
+  const [showTransfer, setShowTransfer] = useState(false);
   const [listPrice, setListPrice] = useState('');
   const [auctionPrice, setAuctionPrice] = useState('');
   const [auctionDuration, setAuctionDuration] = useState('24');
   const [auctionIncrement, setAuctionIncrement] = useState('0.5');
   const [processing, setProcessing] = useState(false);
+  const [liked, setLiked] = useState(false);
+  const [shareSuccess, setShareSuccess] = useState(false);
+
+  // Load like state from localStorage
+  useEffect(() => {
+    const likes = JSON.parse(localStorage.getItem('nft-likes') || '{}');
+    setLiked(!!likes[mint]);
+  }, [mint]);
+
+  const handleLike = useCallback(() => {
+    const likes = JSON.parse(localStorage.getItem('nft-likes') || '{}');
+    if (liked) {
+      delete likes[mint];
+    } else {
+      likes[mint] = true;
+    }
+    localStorage.setItem('nft-likes', JSON.stringify(likes));
+    setLiked(!liked);
+  }, [mint, liked]);
 
   // Find NFT from fetched data
   const nft = allNFTs.find((n) => n.mint === mint);
 
-  // Check if listed in the marketplace store
-  const listing = listings.find((l) => l.mint === mint);
-  const isListed = !!listing;
+  const handleShare = useCallback(async () => {
+    const url = window.location.href;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: `${nft?.name || 'NFT'} on NEXUS`, url });
+      } catch { /* user cancelled */ }
+    } else {
+      await navigator.clipboard.writeText(url);
+      setShareSuccess(true);
+      setTimeout(() => setShareSuccess(false), 2000);
+    }
+  }, [nft?.name]);
+
+  // Check if listed via React Query data
+  const listing = allListings.find((l) => l.mint === mint);
+  const isListed = !!listing || !!nft?.listed;
 
   // Check if current user is the owner
   const isOwner = publicKey && nft?.owner === publicKey.toBase58();
@@ -310,31 +344,58 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
                   </div>
                 </div>
               ) : (
-                <div className="flex gap-3">
-                  <Button size="lg" className="flex-1" onClick={() => setShowListForm(true)}>
-                    <Tag size={16} />
-                    LIST FOR SALE
+                <>
+                  <div className="flex gap-3">
+                    <Button size="lg" className="flex-1" onClick={() => setShowListForm(true)}>
+                      <Tag size={16} />
+                      LIST FOR SALE
+                    </Button>
+                    <Button size="lg" variant="secondary" className="flex-1" onClick={() => setShowAuctionForm(true)}>
+                      <Gavel size={16} />
+                      CREATE AUCTION
+                    </Button>
+                  </div>
+                  <Button size="md" variant="ghost" className="w-full mt-2" onClick={() => setShowTransfer(true)}>
+                    <Send size={14} />
+                    TRANSFER NFT
                   </Button>
-                  <Button size="lg" variant="secondary" className="flex-1" onClick={() => setShowAuctionForm(true)}>
-                    <Gavel size={16} />
-                    CREATE AUCTION
-                  </Button>
-                </div>
+                </>
               )}
             </div>
           )}
 
-          {/* Actions */}
+          {/* Actions (Like / Share) */}
           <div className="flex items-center gap-3 mb-6">
-            <button className="flex items-center gap-2 px-4 py-2 border border-[var(--border-color)] text-sm text-[var(--text-secondary)] hover:text-[var(--color-crimson)] hover:border-[var(--color-crimson)] transition-all cursor-pointer">
-              <Heart size={14} />
-              Like
+            <button
+              onClick={handleLike}
+              className={`flex items-center gap-2 px-4 py-2 border text-sm transition-all cursor-pointer ${
+                liked
+                  ? 'border-[var(--color-crimson)] text-[var(--color-crimson)] bg-[var(--color-crimson)]/10'
+                  : 'border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--color-crimson)] hover:border-[var(--color-crimson)]'
+              }`}
+            >
+              <Heart size={14} fill={liked ? 'currentColor' : 'none'} />
+              {liked ? 'Liked' : 'Like'}
             </button>
-            <button className="flex items-center gap-2 px-4 py-2 border border-[var(--border-color)] text-sm text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-all cursor-pointer">
-              <Share2 size={14} />
-              Share
+            <button
+              onClick={handleShare}
+              className={`flex items-center gap-2 px-4 py-2 border text-sm transition-all cursor-pointer ${
+                shareSuccess
+                  ? 'border-[var(--color-electric-lime)] text-[var(--color-electric-lime)]'
+                  : 'border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:border-[var(--accent)]'
+              }`}
+            >
+              {shareSuccess ? <Check size={14} /> : <Share2 size={14} />}
+              {shareSuccess ? 'Copied!' : 'Share'}
             </button>
           </div>
+
+          {/* Price History Chart */}
+          {allActivities.length > 0 && (
+            <div className="mb-6">
+              <PriceChart activities={allActivities} />
+            </div>
+          )}
 
           {/* Activity */}
           <div className="bg-[var(--bg-secondary)] border border-[var(--border-color)]">
@@ -397,6 +458,44 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
             ))}
           </div>
         </section>
+      )}
+
+      {/* Mobile Bottom Action Bar */}
+      {nft && (
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-[var(--bg-primary)]/95 backdrop-blur-md border-t border-[var(--border-color)] p-3 flex items-center gap-3 sm:hidden">
+          {displayListed && displayPrice && !isOwner ? (
+            <>
+              <div className="flex-1">
+                <p className="text-[10px] text-[var(--text-secondary)] uppercase">Price</p>
+                <p className="text-sm font-[family-name:var(--font-mono)] font-bold text-[var(--accent)]">◎ {formatSOL(displayPrice)}</p>
+              </div>
+              <Button size="md" onClick={handleBuy} loading={processing} disabled={processing}>
+                <ShoppingCart size={14} />
+                BUY
+              </Button>
+            </>
+          ) : isOwner && !isListed ? (
+            <>
+              <Button size="md" className="flex-1" onClick={() => setShowListForm(true)}>
+                <Tag size={14} />
+                LIST
+              </Button>
+              <Button size="md" variant="secondary" className="flex-1" onClick={() => setShowAuctionForm(true)}>
+                <Gavel size={14} />
+                AUCTION
+              </Button>
+            </>
+          ) : null}
+        </div>
+      )}
+
+      {/* Transfer Modal */}
+      {nft && (
+        <TransferModal
+          nft={nft}
+          isOpen={showTransfer}
+          onClose={() => setShowTransfer(false)}
+        />
       )}
     </div>
   );

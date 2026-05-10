@@ -3,16 +3,16 @@
 import { useCallback } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { createAuction, placeBid, settleAuction } from '@/lib/solana/auction';
-import { apiCreateAuction, apiPlaceBid, apiSettleAuction, apiCreateActivity } from '@/lib/api';
+import { apiCreateAuction, apiPlaceBid, apiSettleAuction, apiUpdateNFT, apiCreateActivity } from '@/lib/api';
 import { useToastStore } from '@/store/useToastStore';
-import { useMarketplaceStore } from '@/store/useMarketplaceStore';
+import { useInvalidateQueries } from '@/hooks/useData';
 import type { NFT } from '@/types/nft';
 import type { Auction } from '@/types/auction';
 
 export function useCreateAuction() {
   const wallet = useWallet();
   const { addToast } = useToastStore();
-  const { addAuction } = useMarketplaceStore();
+  const { invalidateAll } = useInvalidateQueries();
 
   const create = useCallback(
     async (nft: NFT, startingPrice: number, durationHours: number, minBidIncrement: number) => {
@@ -33,42 +33,34 @@ export function useCreateAuction() {
         });
 
         // Save to database
-        await apiCreateAuction({
-          nft_mint: nft.mint,
-          seller: wallet.publicKey.toBase58(),
-          starting_price: startingPrice,
-          duration_hours: durationHours,
-          min_bid_increment: minBidIncrement,
-          nft_name: nft.name,
-          nft_image: nft.image,
-          tx_signature: result.txSignature,
-        }).catch(() => {});
+        try {
+          await apiCreateAuction({
+            nft_mint: nft.mint,
+            seller: wallet.publicKey.toBase58(),
+            starting_price: startingPrice,
+            duration_hours: durationHours,
+            min_bid_increment: minBidIncrement,
+            nft_name: nft.name,
+            nft_image: nft.image,
+            tx_signature: result.txSignature,
+          });
+        } catch (dbErr) {
+          console.error('Failed to save auction to database:', dbErr);
+          addToast('Auction created but sync failed — may not appear on other devices', 'warning');
+        }
 
-        // Local store for instant UI
-        const auction: Auction = {
-          id: `auction-${Date.now()}`,
-          nft,
-          seller: wallet.publicKey.toBase58(),
-          startingPrice,
-          currentBid: startingPrice,
-          highestBidder: null,
-          startTime: new Date().toISOString(),
-          endTime: new Date(Date.now() + durationHours * 3600000).toISOString(),
-          status: 'active',
-          bids: [],
-          minBidIncrement,
-        };
-        addAuction(auction);
+        // Invalidate queries → auto re-fetch everywhere
+        invalidateAll();
 
         addToast(`Auction created for "${nft.name}"`, 'success', result.txSignature);
-        return auction;
+        return { txSignature: result.txSignature };
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Failed to create auction';
         addToast(msg, 'error');
         return null;
       }
     },
-    [wallet, addToast, addAuction]
+    [wallet, addToast, invalidateAll]
   );
 
   return { create };
@@ -77,7 +69,7 @@ export function useCreateAuction() {
 export function usePlaceBid() {
   const wallet = useWallet();
   const { addToast } = useToastStore();
-  const { addBid } = useMarketplaceStore();
+  const { invalidateAuctions } = useInvalidateQueries();
 
   const bid = useCallback(
     async (auction: Auction, amount: number) => {
@@ -97,8 +89,9 @@ export function usePlaceBid() {
       }
 
       try {
-        addToast(`Placing bid of ◎ ${amount}...`, 'info', undefined, 3000);
+        addToast(`Signing bid of ◎ ${amount}...`, 'info', undefined, 3000);
 
+        // Escrow-lite: only sign message, no SOL transfer
         const result = await placeBid({
           wallet,
           auctionId: auction.id,
@@ -107,23 +100,20 @@ export function usePlaceBid() {
         });
 
         // Save to database
-        await apiPlaceBid(auction.id, {
-          bidder: wallet.publicKey.toBase58(),
-          amount,
-          tx_signature: result.txSignature,
-        }).catch(() => {});
+        try {
+          await apiPlaceBid(auction.id, {
+            bidder: wallet.publicKey.toBase58(),
+            amount,
+            tx_signature: result.txSignature,
+          });
+        } catch (dbErr) {
+          console.error('Failed to save bid to database:', dbErr);
+          addToast('Bid signed but sync failed', 'warning');
+        }
 
-        // Local store
-        const newBid = {
-          id: `bid-${Date.now()}`,
-          auctionId: auction.id,
-          bidder: wallet.publicKey.toBase58(),
-          amount,
-          timestamp: new Date().toISOString(),
-        };
-        addBid(auction.id, newBid);
+        invalidateAuctions();
 
-        addToast(`Bid placed: ◎ ${amount}`, 'success', result.txSignature);
+        addToast(`Bid placed: ◎ ${amount} (payment on settlement)`, 'success', result.txSignature);
         return result;
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Bid failed';
@@ -131,7 +121,7 @@ export function usePlaceBid() {
         return null;
       }
     },
-    [wallet, addToast, addBid]
+    [wallet, addToast, invalidateAuctions]
   );
 
   return { bid };
@@ -140,7 +130,7 @@ export function usePlaceBid() {
 export function useSettleAuction() {
   const wallet = useWallet();
   const { addToast } = useToastStore();
-  const { settleAuction: settle } = useMarketplaceStore();
+  const { invalidateAll } = useInvalidateQueries();
 
   const settleAuctionFn = useCallback(
     async (auction: Auction) => {
@@ -154,22 +144,78 @@ export function useSettleAuction() {
         return null;
       }
 
+      const callerAddress = wallet.publicKey.toBase58();
+      const isWinner = callerAddress === auction.highestBidder;
+      const isSeller = callerAddress === auction.seller;
+
+      if (!isWinner && !isSeller) {
+        addToast('Only the seller or winner can settle this auction', 'error');
+        return null;
+      }
+
       try {
+        if (isWinner) {
+          addToast('Processing payment for auction settlement...', 'info', undefined, 5000);
+        } else {
+          addToast('Confirming auction settlement...', 'info', undefined, 5000);
+        }
+
         const result = await settleAuction({
           wallet,
           auctionId: auction.id,
           mintAddress: auction.nft.mint,
           winnerAddress: auction.highestBidder,
           finalAmount: auction.currentBid,
+          role: isWinner ? 'winner' : 'seller',
+          sellerAddress: auction.seller,
         });
 
         // Update database
-        await apiSettleAuction(auction.id, {
-          seller: wallet.publicKey.toBase58(),
-        }).catch(() => {});
+        try {
+          await apiSettleAuction(auction.id, {
+            seller: auction.seller,
+            caller: callerAddress,
+          });
+        } catch (dbErr) {
+          console.error('Failed to settle auction in database:', dbErr);
+          addToast('Settlement signed but sync failed', 'warning');
+        }
 
-        settle(auction.id);
-        addToast(`Auction settled! "${auction.nft.name}" → winner`, 'success', result.txSignature);
+        // Update NFT owner
+        try {
+          await apiUpdateNFT({
+            mint: auction.nft.mint,
+            owner: auction.highestBidder,
+            listed: false,
+            price: null,
+          });
+        } catch (dbErr) {
+          console.error('Failed to transfer NFT ownership:', dbErr);
+        }
+
+        // Log activity
+        try {
+          await apiCreateActivity({
+            type: 'auction_won',
+            nft_mint: auction.nft.mint,
+            nft_name: auction.nft.name,
+            nft_image: auction.nft.image,
+            from_address: auction.seller,
+            to_address: auction.highestBidder,
+            price: auction.currentBid,
+            tx_signature: result.txSignature,
+          });
+        } catch (dbErr) {
+          console.error('Failed to log settlement activity:', dbErr);
+        }
+
+        // Invalidate all queries → UI updates everywhere
+        invalidateAll();
+
+        const message = isWinner
+          ? `Payment sent! "${auction.nft.name}" is now yours`
+          : `Auction settled! "${auction.nft.name}" transferred to winner`;
+        addToast(message, 'success', result.txSignature);
         return result;
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Settlement failed';
@@ -177,7 +223,7 @@ export function useSettleAuction() {
         return null;
       }
     },
-    [wallet, addToast, settle]
+    [wallet, addToast, invalidateAll]
   );
 
   return { settle: settleAuctionFn };

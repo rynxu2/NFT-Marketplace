@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import type { NFT } from '@/types/nft';
 import type { Auction, Bid } from '@/types/auction';
 import type { Activity } from '@/types/activity';
@@ -14,7 +13,13 @@ export interface Listing {
   txSignature?: string;
 }
 
+/**
+ * Minimal client-side state.
+ * Supabase is the single source of truth — this store is only used
+ * for optimistic UI updates while React Query cache invalidates.
+ */
 interface MarketplaceState {
+  // Lightweight client state (no persist — ephemeral)
   listings: Listing[];
   auctions: Auction[];
   activities: Activity[];
@@ -24,81 +29,75 @@ interface MarketplaceState {
   removeListing: (mint: string) => void;
   addAuction: (auction: Auction) => void;
   addBid: (auctionId: string, bid: Bid) => void;
-  settleAuction: (auctionId: string) => void;
+  settleAuction: (auctionId: string, nftMint?: string, winnerAddress?: string) => void;
   addActivity: (activity: Activity) => void;
   addMintedNFT: (nft: NFT) => void;
   updateNFTOwner: (mint: string, newOwner: string) => void;
 }
 
 export const useMarketplaceStore = create<MarketplaceState>()(
-  persist(
-    (set) => ({
-      listings: [],
-      auctions: [],
-      activities: [],
-      mintedNFTs: [],
+  (set) => ({
+    listings: [],
+    auctions: [],
+    activities: [],
+    mintedNFTs: [],
 
-      addListing: (listing) =>
-        set((state) => ({
-          listings: [listing, ...state.listings],
-        })),
+    addListing: (listing) =>
+      set((state) => ({
+        listings: [listing, ...state.listings],
+      })),
 
-      removeListing: (mint) =>
-        set((state) => ({
-          listings: state.listings.filter((l) => l.mint !== mint),
-        })),
+    removeListing: (mint) =>
+      set((state) => ({
+        listings: state.listings.filter((l) => l.mint !== mint),
+      })),
 
-      addAuction: (auction) =>
-        set((state) => ({
-          auctions: [auction, ...state.auctions],
-        })),
+    addAuction: (auction) =>
+      set((state) => ({
+        auctions: [auction, ...state.auctions],
+      })),
 
-      addBid: (auctionId, bid) =>
-        set((state) => ({
-          auctions: state.auctions.map((a) =>
-            a.id === auctionId
-              ? {
-                  ...a,
-                  currentBid: bid.amount,
-                  highestBidder: bid.bidder,
-                  bids: [bid, ...a.bids],
-                }
-              : a
-          ),
-        })),
+    addBid: (auctionId, bid) =>
+      set((state) => ({
+        auctions: state.auctions.map((a) =>
+          a.id === auctionId
+            ? {
+                ...a,
+                currentBid: bid.amount,
+                highestBidder: bid.bidder,
+                bids: [bid, ...a.bids],
+              }
+            : a
+        ),
+      })),
 
-      settleAuction: (auctionId) =>
-        set((state) => ({
-          auctions: state.auctions.map((a) =>
-            a.id === auctionId ? { ...a, status: 'settled' as const } : a
-          ),
-        })),
+    settleAuction: (auctionId, nftMint, winnerAddress) =>
+      set((state) => ({
+        auctions: state.auctions.map((a) =>
+          a.id === auctionId ? { ...a, status: 'settled' as const } : a
+        ),
+        mintedNFTs: nftMint && winnerAddress
+          ? state.mintedNFTs.map((n) =>
+              n.mint === nftMint ? { ...n, owner: winnerAddress, listed: false, price: undefined } : n
+            )
+          : state.mintedNFTs,
+      })),
 
-      addActivity: (activity) =>
-        set((state) => ({
-          activities: [activity, ...state.activities],
-        })),
+    addActivity: (activity) =>
+      set((state) => ({
+        activities: [activity, ...state.activities],
+      })),
 
-      addMintedNFT: (nft) =>
-        set((state) => ({
-          mintedNFTs: [nft, ...state.mintedNFTs],
-        })),
+    addMintedNFT: (nft) =>
+      set((state) => ({
+        mintedNFTs: [nft, ...state.mintedNFTs],
+      })),
 
-      updateNFTOwner: (mint, newOwner) =>
-        set((state) => ({
-          mintedNFTs: state.mintedNFTs.map((n) =>
-            n.mint === mint ? { ...n, owner: newOwner, listed: false, price: undefined } : n
-          ),
-        })),
-    }),
-    {
-      name: 'nexus-marketplace',
-      partialize: (state) => ({
-        listings: state.listings,
-        auctions: state.auctions,
-        activities: state.activities,
-        mintedNFTs: state.mintedNFTs,
-      }),
-    }
-  )
+    updateNFTOwner: (mint, newOwner) =>
+      set((state) => ({
+        mintedNFTs: state.mintedNFTs.map((n) =>
+          n.mint === mint ? { ...n, owner: newOwner, listed: false, price: undefined } : n
+        ),
+      })),
+  })
 );
