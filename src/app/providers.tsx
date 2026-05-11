@@ -20,8 +20,11 @@ const WalletModalProvider = dynamic(
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 30 * 1000,
+      staleTime: 30_000,
+      gcTime: 60_000,
       refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      retry: 1,
     },
   },
 });

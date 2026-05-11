@@ -3,15 +3,21 @@
 import React from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { motion } from 'framer-motion';
+import dynamic from 'next/dynamic';
+import { LazyMotion, domAnimation, m } from 'framer-motion';
 import { ArrowRight, Zap, TrendingUp, Gavel, Users, BarChart3 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import EmptyState from '@/components/ui/EmptyState';
-import NFTCard from '@/components/nft/NFTCard';
-import AuctionCard from '@/components/auction/AuctionCard';
 import { NFTCardSkeleton } from '@/components/ui/Skeleton';
 import { useFetchNFTs, useFetchListings, useFetchAuctions } from '@/hooks/useData';
 import { formatSOL } from '@/lib/solana/connection';
+
+const NFTCard = dynamic(() => import('@/components/nft/NFTCard'), {
+  loading: () => <NFTCardSkeleton />,
+});
+const AuctionCard = dynamic(() => import('@/components/auction/AuctionCard'), {
+  loading: () => <NFTCardSkeleton />,
+});
 
 const fadeUp = {
   initial: { opacity: 0, y: 40 },
@@ -58,6 +64,7 @@ export default function HomePage() {
   const isLoading = nftsLoading || listingsLoading || auctionsLoading;
 
   return (
+    <LazyMotion features={domAnimation}>
     <div className="relative">
       {/* ===== HERO SECTION ===== */}
       <section className="relative overflow-hidden min-h-[90vh] flex items-center">
@@ -70,20 +77,20 @@ export default function HomePage() {
         <div className="max-w-[80rem] mx-auto px-4 sm:px-6 py-20 relative z-10">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
             {/* Left: Text */}
-            <motion.div
+            <m.div
               className="lg:col-span-7"
               initial="initial"
               animate="animate"
               variants={stagger}
             >
-              <motion.div variants={fadeUp} className="mb-4">
+              <m.div variants={fadeUp} className="mb-4">
                 <span className="inline-flex items-center gap-2 px-3 py-1.5 border border-[var(--accent)]/30 text-[var(--accent)] text-[10px] font-[family-name:var(--font-display)] uppercase tracking-widest">
                   <span className="w-1.5 h-1.5 bg-[var(--color-electric-lime)] rounded-full animate-pulse" />
                   LIVE ON SOLANA DEVNET
                 </span>
-              </motion.div>
+              </m.div>
 
-              <motion.h1
+              <m.h1
                 variants={fadeUp}
                 className="font-[family-name:var(--font-display)] text-4xl sm:text-5xl lg:text-6xl font-black leading-[1.1] mb-6"
               >
@@ -92,16 +99,16 @@ export default function HomePage() {
                 <span className="gradient-text-cyber">COLLECT</span>
                 <br />
                 <span className="text-[var(--text-primary)]">DIGITAL ART</span>
-              </motion.h1>
+              </m.h1>
 
-              <motion.p
+              <m.p
                 variants={fadeUp}
                 className="text-[var(--text-secondary)] text-base sm:text-lg max-w-[28rem] mb-8 leading-relaxed"
               >
                 The next-gen NFT marketplace powered by Solana. Trade at lightning speed with near-zero fees.
-              </motion.p>
+              </m.p>
 
-              <motion.div variants={fadeUp} className="flex flex-wrap gap-3">
+              <m.div variants={fadeUp} className="flex flex-wrap gap-3">
                 <Link href="/explore">
                   <Button size="lg">
                     EXPLORE NFTs
@@ -113,10 +120,10 @@ export default function HomePage() {
                     CREATE
                   </Button>
                 </Link>
-              </motion.div>
+              </m.div>
 
               {/* Stats */}
-              <motion.div
+              <m.div
                 variants={fadeUp}
                 className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-12 pt-8 border-t border-[var(--border-color)]"
               >
@@ -131,11 +138,11 @@ export default function HomePage() {
                     </p>
                   </div>
                 ))}
-              </motion.div>
-            </motion.div>
+              </m.div>
+            </m.div>
 
             {/* Right: Featured NFT */}
-            <motion.div
+            <m.div
               className="lg:col-span-5"
               initial={{ opacity: 0, x: 50, rotateY: -10 }}
               animate={{ opacity: 1, x: 0, rotateY: 0 }}
@@ -192,7 +199,7 @@ export default function HomePage() {
                   </div>
                 </div>
               )}
-            </motion.div>
+            </m.div>
           </div>
         </div>
       </section>
@@ -200,7 +207,7 @@ export default function HomePage() {
       {/* ===== LIVE AUCTIONS ===== */}
       <section className="py-16 relative">
         <div className="max-w-[80rem] mx-auto px-4 sm:px-6">
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -218,7 +225,7 @@ export default function HomePage() {
             <Link href="/explore" className="text-xs font-[family-name:var(--font-display)] text-[var(--accent)] hover:underline uppercase tracking-wider">
               View All →
             </Link>
-          </motion.div>
+          </m.div>
 
           {auctionsLoading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -239,7 +246,7 @@ export default function HomePage() {
       {/* ===== TRENDING NFTs ===== */}
       <section className="py-16 relative">
         <div className="max-w-[80rem] mx-auto px-4 sm:px-6">
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -254,7 +261,7 @@ export default function HomePage() {
             <Link href="/explore" className="text-xs font-[family-name:var(--font-display)] text-[var(--accent)] hover:underline uppercase tracking-wider">
               View All →
             </Link>
-          </motion.div>
+          </m.div>
 
           {isLoading ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -276,7 +283,7 @@ export default function HomePage() {
       {collections.length > 0 && (
         <section className="py-16 relative">
           <div className="max-w-[80rem] mx-auto px-4 sm:px-6">
-            <motion.div
+            <m.div
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
@@ -288,11 +295,11 @@ export default function HomePage() {
               <p className="text-sm text-[var(--text-secondary)]">
                 Curated collections from the best creators
               </p>
-            </motion.div>
+            </m.div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {collections.map((col, i) => (
-                <motion.div
+                <m.div
                   key={col.slug}
                   initial={{ opacity: 0, y: 30 }}
                   whileInView={{ opacity: 1, y: 0 }}
@@ -334,7 +341,7 @@ export default function HomePage() {
                       </div>
                     </div>
                   </Link>
-                </motion.div>
+                </m.div>
               ))}
             </div>
           </div>
@@ -344,7 +351,7 @@ export default function HomePage() {
       {/* ===== CTA ===== */}
       <section className="py-20 relative">
         <div className="max-w-[80rem] mx-auto px-4 sm:px-6">
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -365,9 +372,10 @@ export default function HomePage() {
                 </Button>
               </Link>
             </div>
-          </motion.div>
+          </m.div>
         </div>
       </section>
     </div>
+    </LazyMotion>
   );
 }

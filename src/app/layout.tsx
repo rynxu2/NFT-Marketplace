@@ -1,9 +1,11 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import dynamic from 'next/dynamic';
 import Providers from './providers';
 import Header from '@/components/layout/Header';
-import Footer from '@/components/layout/Footer';
-import ToastProvider from '@/components/ui/ToastProvider';
+
+const Footer = dynamic(() => import('@/components/layout/Footer'));
+const ToastProvider = dynamic(() => import('@/components/ui/ToastProvider'));
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://nexus-nft.pages.dev';
 
@@ -50,7 +52,7 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
-          href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
           rel="stylesheet"
         />
       </head>

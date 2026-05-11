@@ -2,7 +2,11 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
+  poweredByHeader: false,
   images: {
+    minimumCacheTTL: 3600,
+    deviceSizes: [640, 828, 1200],
+    imageSizes: [16, 32, 64, 128, 256],
     remotePatterns: [
       {
         protocol: 'https',

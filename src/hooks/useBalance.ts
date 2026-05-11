@@ -29,8 +29,8 @@ export function useBalance() {
 
   useEffect(() => {
     refresh();
-    // Refresh balance every 15 seconds
-    const interval = setInterval(refresh, 15000);
+    // Refresh balance every 30 seconds
+    const interval = setInterval(refresh, 30_000);
     return () => clearInterval(interval);
   }, [refresh]);
 
