@@ -14,6 +14,7 @@ const mockNFT: NFT = {
   listed: false,
   attributes: [{ trait_type: 'Rarity', value: 'Common' }],
   createdAt: new Date().toISOString(),
+  chain: 'solana',
 };
 
 const mockListing = {

@@ -15,7 +15,7 @@ export function useCreateAuction() {
   const { invalidateAll } = useInvalidateQueries();
 
   const create = useCallback(
-    async (nft: NFT, startingPrice: number, durationHours: number, minBidIncrement: number) => {
+    async (nft: NFT, startingPrice: number, durationMinutes: number, minBidIncrement: number) => {
       if (!wallet.publicKey) {
         addToast('Connect wallet first', 'error');
         return null;
@@ -28,7 +28,7 @@ export function useCreateAuction() {
           wallet,
           mintAddress: nft.mint,
           startingPrice,
-          durationHours,
+          durationMinutes,
           minBidIncrement,
         });
 
@@ -38,7 +38,7 @@ export function useCreateAuction() {
             nft_mint: nft.mint,
             seller: wallet.publicKey.toBase58(),
             starting_price: startingPrice,
-            duration_hours: durationHours,
+            duration_minutes: durationMinutes,
             min_bid_increment: minBidIncrement,
             nft_name: nft.name,
             nft_image: nft.image,

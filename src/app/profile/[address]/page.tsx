@@ -15,6 +15,7 @@ import { SOL_PRICE_USD } from '@/lib/constants';
 import { useBalance, useRequestAirdrop } from '@/hooks/useBalance';
 import { useToastStore } from '@/store/useToastStore';
 import { useFetchNFTs, useFetchListings, useFetchAuctions, useFetchActivities } from '@/hooks/useData';
+import { useFavorites } from '@/hooks/useFavorites';
 
 export default function ProfilePage({ params }: { params: Promise<{ address: string }> }) {
   const { address } = use(params);
@@ -22,13 +23,14 @@ export default function ProfilePage({ params }: { params: Promise<{ address: str
   const { balance, refresh: refreshBalance } = useBalance();
   const { airdrop, loading: airdropLoading } = useRequestAirdrop();
   const { addToast } = useToastStore();
-  const [activeTab, setActiveTab] = useState<'owned' | 'created' | 'listed' | 'won' | 'activity'>('owned');
+  const [activeTab, setActiveTab] = useState<'owned' | 'created' | 'listed' | 'favorites' | 'won' | 'activity'>('owned');
 
   const { nfts: ownedNFTs, loading: ownedLoading } = useFetchNFTs({ owner: address });
   const { nfts: createdNFTs, loading: createdLoading } = useFetchNFTs({ creator: address });
   const { listings, loading: listingsLoading } = useFetchListings();
   const { auctions, loading: auctionsLoading } = useFetchAuctions();
   const { activities } = useFetchActivities();
+  const { favorites, loading: favoritesLoading } = useFavorites();
 
   const isOwnProfile = publicKey && publicKey.toBase58() === address;
   const network = getNetwork();
@@ -48,13 +50,14 @@ export default function ProfilePage({ params }: { params: Promise<{ address: str
     return activities.filter((a) => a.from === address || a.to === address).slice(0, 20);
   }, [address, activities]);
 
-  const nfts = activeTab === 'owned' ? ownedNFTs : activeTab === 'created' ? createdNFTs : listedNFTs;
-  const isLoading = activeTab === 'owned' ? ownedLoading : activeTab === 'created' ? createdLoading : listingsLoading;
+  const nfts = activeTab === 'owned' ? ownedNFTs : activeTab === 'created' ? createdNFTs : activeTab === 'favorites' ? favorites : listedNFTs;
+  const isLoading = activeTab === 'owned' ? ownedLoading : activeTab === 'created' ? createdLoading : activeTab === 'favorites' ? favoritesLoading : listingsLoading;
 
   const tabs = [
     { id: 'owned' as const, label: 'Owned', count: ownedNFTs.length },
     { id: 'created' as const, label: 'Created', count: createdNFTs.length },
     { id: 'listed' as const, label: 'Listed', count: listedNFTs.length },
+    { id: 'favorites' as const, label: 'Favorites', count: favorites.length },
     { id: 'won' as const, label: 'Won', count: wonAuctions.length },
     { id: 'activity' as const, label: 'Activity', count: profileActivities.length },
   ];

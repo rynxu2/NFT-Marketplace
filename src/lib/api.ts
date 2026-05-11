@@ -156,7 +156,7 @@ export interface APICreateAuction {
   nft_mint: string;
   seller: string;
   starting_price: number;
-  duration_hours: number;
+  duration_minutes: number;
   min_bid_increment: number;
   nft_name: string;
   nft_image: string;

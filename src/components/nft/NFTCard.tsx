@@ -4,10 +4,13 @@ import React, { useState, useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { Heart, ShoppingCart } from 'lucide-react';
+import { Heart, ShoppingCart, Gavel } from 'lucide-react';
 import type { NFT } from '@/types/nft';
 import { formatSOL } from '@/lib/solana/connection';
 import Badge from '@/components/ui/Badge';
+import { useFetchAuctions } from '@/hooks/useData';
+import { useFavorites } from '@/hooks/useFavorites';
+import { CHAIN_CONFIGS } from '@/types/chain';
 
 interface NFTCardProps {
   nft: NFT;
@@ -15,9 +18,15 @@ interface NFTCardProps {
 }
 
 export default function NFTCard({ nft, index = 0 }: NFTCardProps) {
-  const [liked, setLiked] = useState(false);
+  const { isFavorited, toggleFavorite } = useFavorites();
+  const liked = isFavorited(nft.mint);
   const cardRef = useRef<HTMLDivElement>(null);
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
+
+  const { auctions } = useFetchAuctions();
+  const activeAuction = auctions.find(
+    (a) => a.nft?.mint === nft.mint && (a.status === 'active' || (a.status !== 'settled' && new Date(a.endTime).getTime() > Date.now()))
+  );
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!cardRef.current) return;
@@ -64,7 +73,7 @@ export default function NFTCard({ nft, index = 0 }: NFTCardProps) {
             <button
               onClick={(e) => {
                 e.preventDefault();
-                setLiked(!liked);
+                toggleFavorite(nft.mint);
               }}
               className="absolute top-3 right-3 p-2 bg-black/40 border border-white/10 text-white hover:text-[var(--color-crimson)] transition-colors z-10 cursor-pointer"
               aria-label="Like NFT"
@@ -79,8 +88,33 @@ export default function NFTCard({ nft, index = 0 }: NFTCardProps) {
               </div>
             )}
 
-            {/* Quick Buy on hover */}
-            {nft.listed && nft.price && (
+            {/* Chain Badge */}
+            {nft.chain && (
+              <div
+                className="absolute bottom-3 left-3 px-2 py-0.5 text-[9px] font-[family-name:var(--font-mono)] font-bold uppercase tracking-wider bg-black/60 border border-white/10 backdrop-blur-sm"
+                style={{ color: CHAIN_CONFIGS[nft.chain]?.color || 'var(--accent)' }}
+              >
+                {CHAIN_CONFIGS[nft.chain]?.icon} {CHAIN_CONFIGS[nft.chain]?.name}
+                {nft.bridgeOrigin && ' ⚡'}
+              </div>
+            )}
+
+            {/* Quick Action on hover */}
+            {activeAuction ? (
+              <motion.div
+                initial={{ y: 20, opacity: 0 }}
+                className="absolute bottom-3 left-3 right-3 opacity-0 group-hover:opacity-100 transition-all duration-300"
+                style={{ y: 0 }}
+              >
+                <button
+                  onClick={(e) => e.preventDefault()}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-[var(--color-signal-orange)] text-[var(--bg-primary)] text-xs font-[family-name:var(--font-display)] uppercase tracking-wider clip-corner-sm hover:shadow-[0_0_15px_var(--color-signal-orange)] transition-all cursor-pointer"
+                >
+                  <Gavel size={12} />
+                  PLACE BID
+                </button>
+              </motion.div>
+            ) : nft.listed && nft.price ? (
               <motion.div
                 initial={{ y: 20, opacity: 0 }}
                 className="absolute bottom-3 left-3 right-3 opacity-0 group-hover:opacity-100 transition-all duration-300"
@@ -94,7 +128,7 @@ export default function NFTCard({ nft, index = 0 }: NFTCardProps) {
                   BUY NOW
                 </button>
               </motion.div>
-            )}
+            ) : null}
           </div>
 
           {/* Info */}
@@ -109,9 +143,16 @@ export default function NFTCard({ nft, index = 0 }: NFTCardProps) {
               {nft.name}
             </h3>
 
-            {/* Price */}
+            {/* Price / Status */}
             <div className="flex items-center justify-between">
-              {nft.listed && nft.price ? (
+              {activeAuction ? (
+                <div>
+                  <p className="text-[10px] text-[var(--color-signal-orange)] uppercase tracking-wider mb-0.5">Current Bid</p>
+                  <p className="text-sm font-[family-name:var(--font-mono)] font-semibold text-[var(--color-signal-orange)]">
+                    ◎ {formatSOL(activeAuction.currentBid)}
+                  </p>
+                </div>
+              ) : nft.listed && nft.price ? (
                 <div>
                   <p className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider mb-0.5">Price</p>
                   <p className="text-sm font-[family-name:var(--font-mono)] font-semibold text-[var(--accent)]">

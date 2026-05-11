@@ -19,6 +19,8 @@ export interface NFTAttribute {
   value: string | number;
 }
 
+import type { ChainId } from './chain';
+
 export interface NFT {
   mint: string;
   name: string;
@@ -33,6 +35,10 @@ export interface NFT {
   collectionSlug?: string;
   attributes: NFTAttribute[];
   createdAt: string;
+  chain: ChainId;
+  tokenId?: string; // ERC-721 token ID (Polygon)
+  contractAddress?: string; // ERC-721 contract address (Polygon)
+  bridgeOrigin?: ChainId; // original chain if bridged
 }
 
 export interface NFTListing {

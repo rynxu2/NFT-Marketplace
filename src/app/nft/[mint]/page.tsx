@@ -4,7 +4,7 @@ import React, { use, useState, useCallback, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { ArrowLeft, ExternalLink, Heart, Share2, ShoppingCart, Tag, DollarSign, Loader2, Gavel, Clock, Send, Check, Copy } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Heart, Share2, ShoppingCart, Tag, DollarSign, Loader2, Gavel, Clock, Send, Check, Copy, Zap } from 'lucide-react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
@@ -12,12 +12,18 @@ import Input from '@/components/ui/Input';
 import EmptyState from '@/components/ui/EmptyState';
 import NFTCard from '@/components/nft/NFTCard';
 import TransferModal from '@/components/nft/TransferModal';
+import BridgeModal from '@/components/nft/BridgeModal';
 import PriceChart from '@/components/nft/PriceChart';
 import { formatSOL, shortenAddress, timeAgo, getExplorerUrl } from '@/lib/solana/connection';
+import { CHAIN_CONFIGS } from '@/types/chain';
 import { SOL_PRICE_USD } from '@/lib/constants';
 import { useListNFT, useBuyNFT, useCancelListing } from '@/hooks/useMarketplace';
 import { useCreateAuction } from '@/hooks/useAuction';
-import { useFetchNFTs, useFetchListings, useFetchActivities } from '@/hooks/useData';
+import { useMakeOffer, useRespondOffer } from '@/hooks/useOffer';
+import { useFavorites } from '@/hooks/useFavorites';
+import { useFetchNFTs, useFetchListings, useFetchAuctions, useFetchActivities } from '@/hooks/useData';
+import { useQuery } from '@tanstack/react-query';
+import type { Offer } from '@/types/offer';
 
 export default function NFTDetailPage({ params }: { params: Promise<{ mint: string }> }) {
   const { mint } = use(params);
@@ -26,38 +32,32 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
   const { buy } = useBuyNFT();
   const { create: createAuction } = useCreateAuction();
   const { cancel } = useCancelListing();
+  const { makeOffer } = useMakeOffer();
+  const { respond: respondOffer } = useRespondOffer();
+  const { isFavorited, toggleFavorite } = useFavorites();
 
   const { nfts: allNFTs, loading: nftsLoading } = useFetchNFTs();
   const { listings: allListings } = useFetchListings();
+  const { auctions: allAuctions } = useFetchAuctions();
   const { activities: allActivities } = useFetchActivities({ nftMint: mint });
 
   const [showListForm, setShowListForm] = useState(false);
   const [showAuctionForm, setShowAuctionForm] = useState(false);
   const [showTransfer, setShowTransfer] = useState(false);
+  const [showBridge, setShowBridge] = useState(false);
   const [listPrice, setListPrice] = useState('');
   const [auctionPrice, setAuctionPrice] = useState('');
-  const [auctionDuration, setAuctionDuration] = useState('24');
+  const [auctionDuration, setAuctionDuration] = useState('30');
   const [auctionIncrement, setAuctionIncrement] = useState('0.5');
   const [processing, setProcessing] = useState(false);
-  const [liked, setLiked] = useState(false);
+  const [showOfferForm, setShowOfferForm] = useState(false);
+  const [offerAmount, setOfferAmount] = useState('');
   const [shareSuccess, setShareSuccess] = useState(false);
 
-  // Load like state from localStorage
-  useEffect(() => {
-    const likes = JSON.parse(localStorage.getItem('nft-likes') || '{}');
-    setLiked(!!likes[mint]);
-  }, [mint]);
-
+  const liked = isFavorited(mint);
   const handleLike = useCallback(() => {
-    const likes = JSON.parse(localStorage.getItem('nft-likes') || '{}');
-    if (liked) {
-      delete likes[mint];
-    } else {
-      likes[mint] = true;
-    }
-    localStorage.setItem('nft-likes', JSON.stringify(likes));
-    setLiked(!liked);
-  }, [mint, liked]);
+    toggleFavorite(mint);
+  }, [mint, toggleFavorite]);
 
   // Find NFT from fetched data
   const nft = allNFTs.find((n) => n.mint === mint);
@@ -78,6 +78,12 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
   // Check if listed via React Query data
   const listing = allListings.find((l) => l.mint === mint);
   const isListed = !!listing || !!nft?.listed;
+
+  // Check if NFT has an active auction
+  const activeAuction = allAuctions.find(
+    (a) => a.nft?.mint === mint && (a.status === 'active' || (a.status !== 'settled' && new Date(a.endTime).getTime() > Date.now()))
+  );
+  const hasActiveAuction = !!activeAuction;
 
   // Check if current user is the owner
   const isOwner = publicKey && nft?.owner === publicKey.toBase58();
@@ -126,6 +132,45 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
     await cancel(listing);
     setProcessing(false);
   };
+
+  const handleMakeOffer = async () => {
+    if (!nft) return;
+    const amount = parseFloat(offerAmount);
+    if (isNaN(amount) || amount <= 0) return;
+    setProcessing(true);
+    const result = await makeOffer(nft, amount);
+    setProcessing(false);
+    if (result) {
+      setShowOfferForm(false);
+      setOfferAmount('');
+    }
+  };
+
+  const handleRespondOffer = async (offerId: string, action: 'accept' | 'reject', amount?: number) => {
+    setProcessing(true);
+    await respondOffer(offerId, action, amount);
+    setProcessing(false);
+  };
+
+  // Fetch offers for this NFT
+  const { data: offers = [] } = useQuery<Offer[]>({
+    queryKey: ['offers', mint],
+    queryFn: async () => {
+      const res = await fetch(`/api/offers?nft_mint=${mint}`);
+      if (!res.ok) return [];
+      const json = await res.json();
+      return (json.data || []).map((o: Record<string, unknown>) => ({
+        id: o.id as string,
+        nftMint: o.nft_mint as string,
+        nft: o.nft || null,
+        bidder: o.bidder as string,
+        amount: o.amount as number,
+        status: o.status as string,
+        expiresAt: o.expires_at as string,
+        createdAt: o.created_at as string,
+      }));
+    },
+  });
 
   // Loading state
   if (nftsLoading) {
@@ -267,10 +312,72 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
             </div>
           )}
 
+          {/* Make Offer (for non-owners) */}
+          {!isOwner && publicKey && (
+            <div className="mb-6">
+              {showOfferForm ? (
+                <div className="bg-[var(--bg-secondary)] border border-[var(--color-signal-orange)]/20 p-6">
+                  <h3 className="text-xs font-[family-name:var(--font-display)] uppercase tracking-wider text-[var(--color-signal-orange)] mb-4">
+                    Make an Offer
+                  </h3>
+                  <Input
+                    label="Offer Amount (SOL)"
+                    type="number"
+                    placeholder="e.g., 1.0"
+                    value={offerAmount}
+                    onChange={(e) => setOfferAmount(e.target.value)}
+                  />
+                  <div className="flex gap-3 mt-4">
+                    <Button size="lg" className="flex-1" onClick={handleMakeOffer} loading={processing}>
+                      <DollarSign size={16} />
+                      SUBMIT OFFER
+                    </Button>
+                    <Button variant="secondary" size="lg" onClick={() => setShowOfferForm(false)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button
+                  size="lg"
+                  variant="secondary"
+                  className="w-full"
+                  onClick={() => setShowOfferForm(true)}
+                >
+                  <DollarSign size={16} />
+                  MAKE OFFER
+                </Button>
+              )}
+            </div>
+          )}
+
           {/* Owner Actions */}
           {isOwner && (
             <div className="mb-6">
-              {isListed ? (
+              {hasActiveAuction ? (
+                /* NFT has active auction — block all sale actions */
+                <div className="bg-[var(--bg-secondary)] border border-[var(--color-signal-orange)]/20 p-6">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Gavel size={16} className="text-[var(--color-signal-orange)]" />
+                    <p className="text-xs font-[family-name:var(--font-display)] uppercase tracking-wider text-[var(--color-signal-orange)]">
+                      Active Auction
+                    </p>
+                  </div>
+                  <p className="text-sm text-[var(--text-secondary)] mb-4">
+                    This NFT has an active auction. You cannot list it for sale or create another auction until the current auction is settled.
+                  </p>
+                  <Link href={`/auction/${activeAuction.id}`}>
+                    <Button size="lg" variant="secondary" className="w-full">
+                      <Gavel size={16} />
+                      VIEW AUCTION
+                    </Button>
+                  </Link>
+                  <Button size="md" variant="ghost" className="w-full mt-2" onClick={() => setShowTransfer(true)}>
+                    <Send size={14} />
+                    TRANSFER NFT
+                  </Button>
+                </div>
+              ) : isListed ? (
                 <div className="bg-[var(--bg-secondary)] border border-[var(--accent)]/20 p-6">
                   <p className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider mb-2">
                     Listed for
@@ -319,9 +426,9 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
                   />
                   <div className="grid grid-cols-2 gap-3">
                     <Input
-                      label="Duration (hours)"
+                      label="Duration (minutes)"
                       type="number"
-                      placeholder="24"
+                      placeholder="30"
                       value={auctionDuration}
                       onChange={(e) => setAuctionDuration(e.target.value)}
                     />
@@ -355,10 +462,16 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
                       CREATE AUCTION
                     </Button>
                   </div>
-                  <Button size="md" variant="ghost" className="w-full mt-2" onClick={() => setShowTransfer(true)}>
-                    <Send size={14} />
-                    TRANSFER NFT
-                  </Button>
+                  <div className="flex gap-2 mt-2">
+                    <Button size="md" variant="ghost" className="flex-1" onClick={() => setShowTransfer(true)}>
+                      <Send size={14} />
+                      TRANSFER
+                    </Button>
+                    <Button size="md" variant="ghost" className="flex-1" onClick={() => setShowBridge(true)}>
+                      <Zap size={14} />
+                      BRIDGE
+                    </Button>
+                  </div>
                 </>
               )}
             </div>
@@ -443,6 +556,49 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
               <p className="px-4 py-6 text-sm text-[var(--text-secondary)] text-center">No activity yet</p>
             )}
           </div>
+
+          {/* Offers Panel */}
+          {offers.length > 0 && (
+            <div className="bg-[var(--bg-secondary)] border border-[var(--border-color)] mt-6">
+              <div className="px-4 py-3 border-b border-[var(--border-color)] flex items-center justify-between">
+                <h3 className="text-xs font-[family-name:var(--font-display)] uppercase tracking-wider text-[var(--color-signal-orange)]">
+                  Offers ({offers.length})
+                </h3>
+              </div>
+              <div className="divide-y divide-[var(--border-color)]">
+                {offers.map((offer) => (
+                  <div key={offer.id} className="px-4 py-3 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-[family-name:var(--font-mono)] font-bold text-[var(--color-signal-orange)]">
+                        ◎ {formatSOL(offer.amount)}
+                      </p>
+                      <p className="text-[10px] text-[var(--text-secondary)] mt-0.5">
+                        by {shortenAddress(offer.bidder)}
+                      </p>
+                    </div>
+                    {isOwner && (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleRespondOffer(offer.id, 'accept', offer.amount)}
+                          disabled={processing}
+                          className="px-3 py-1.5 text-[10px] font-[family-name:var(--font-display)] uppercase tracking-wider bg-[var(--color-electric-lime)]/10 text-[var(--color-electric-lime)] border border-[var(--color-electric-lime)]/20 hover:bg-[var(--color-electric-lime)]/20 transition-all cursor-pointer disabled:opacity-50"
+                        >
+                          Accept
+                        </button>
+                        <button
+                          onClick={() => handleRespondOffer(offer.id, 'reject')}
+                          disabled={processing}
+                          className="px-3 py-1.5 text-[10px] font-[family-name:var(--font-display)] uppercase tracking-wider bg-[var(--color-crimson)]/10 text-[var(--color-crimson)] border border-[var(--color-crimson)]/20 hover:bg-[var(--color-crimson)]/20 transition-all cursor-pointer disabled:opacity-50"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </motion.div>
       </div>
 
@@ -474,7 +630,7 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
                 BUY
               </Button>
             </>
-          ) : isOwner && !isListed ? (
+          ) : isOwner && !isListed && !hasActiveAuction ? (
             <>
               <Button size="md" className="flex-1" onClick={() => setShowListForm(true)}>
                 <Tag size={14} />
@@ -485,6 +641,13 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
                 AUCTION
               </Button>
             </>
+          ) : isOwner && hasActiveAuction ? (
+            <Link href={`/auction/${activeAuction!.id}`} className="flex-1">
+              <Button size="md" variant="secondary" className="w-full">
+                <Gavel size={14} />
+                VIEW AUCTION
+              </Button>
+            </Link>
           ) : null}
         </div>
       )}
@@ -495,6 +658,15 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
           nft={nft}
           isOpen={showTransfer}
           onClose={() => setShowTransfer(false)}
+        />
+      )}
+
+      {/* Bridge Modal */}
+      {nft && (
+        <BridgeModal
+          nft={nft}
+          isOpen={showBridge}
+          onClose={() => setShowBridge(false)}
         />
       )}
     </div>

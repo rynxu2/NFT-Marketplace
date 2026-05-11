@@ -21,6 +21,8 @@ const TYPE_CONFIG: Record<ActivityType, { icon: React.ElementType; label: string
   auction_created: { icon: Gavel, label: 'Auction', variant: 'warning' },
   auction_settled: { icon: ArrowDownLeft, label: 'Settled', variant: 'success' },
   auction_won: { icon: Trophy, label: 'Won', variant: 'success' },
+  offer: { icon: Tag, label: 'Offer', variant: 'warning' },
+  offer_accepted: { icon: ArrowUpRight, label: 'Offer Accepted', variant: 'success' },
 };
 
 const FILTER_TYPES: { value: string; label: string }[] = [

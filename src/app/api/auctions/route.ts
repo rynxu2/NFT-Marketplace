@@ -46,7 +46,40 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const endTime = new Date(Date.now() + (body.duration_hours || 24) * 3600000).toISOString();
+
+    // Guard: check if NFT is currently listed for sale
+    const { data: activeListing } = await supabase
+      .from('listings')
+      .select('id')
+      .eq('mint', body.nft_mint)
+      .eq('active', true)
+      .limit(1)
+      .maybeSingle();
+
+    if (activeListing) {
+      return NextResponse.json(
+        { error: 'NFT is currently listed for sale. Cancel the listing first.' },
+        { status: 409 }
+      );
+    }
+
+    // Guard: check if NFT already has an active auction
+    const { data: activeAuction } = await supabase
+      .from('auctions')
+      .select('id')
+      .eq('nft_mint', body.nft_mint)
+      .in('status', ['active', 'ended'])
+      .limit(1)
+      .maybeSingle();
+
+    if (activeAuction) {
+      return NextResponse.json(
+        { error: 'NFT already has an active auction.' },
+        { status: 409 }
+      );
+    }
+
+    const endTime = new Date(Date.now() + (body.duration_minutes || 30) * 60_000).toISOString();
 
     const { data, error } = await supabase
       .from('auctions')

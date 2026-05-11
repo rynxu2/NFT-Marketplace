@@ -32,6 +32,10 @@ function mapSupabaseNFT(row: Record<string, unknown>): NFT {
     collectionSlug: row.collection_slug as string | undefined,
     attributes: (row.attributes as NFT['attributes']) || [],
     createdAt: (row.created_at as string) || new Date().toISOString(),
+    chain: (row.chain as NFT['chain']) || 'solana',
+    tokenId: row.token_id as string | undefined,
+    contractAddress: row.contract_address as string | undefined,
+    bridgeOrigin: row.bridge_origin as NFT['bridgeOrigin'],
   };
 }
 
@@ -67,6 +71,7 @@ function mapSupabaseListing(row: Record<string, unknown>): Listing {
         price: row.price as number,
         attributes: [],
         createdAt: (row.listed_at as string) || new Date().toISOString(),
+        chain: 'solana' as const,
       };
 
   return {
@@ -97,6 +102,7 @@ function mapSupabaseAuction(row: Record<string, unknown>): Auction {
         listed: false,
         attributes: [],
         createdAt: (row.start_time as string) || new Date().toISOString(),
+        chain: 'solana' as const,
       };
 
   const bids: Bid[] = bidsRaw.map((b) => ({

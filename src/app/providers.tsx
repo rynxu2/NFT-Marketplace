@@ -5,9 +5,11 @@ import dynamic from 'next/dynamic';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom';
 import { SolflareWalletAdapter } from '@solana/wallet-adapter-solflare';
+import { WagmiProvider } from 'wagmi';
 import { ThemeProvider } from 'next-themes';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { getRpcEndpoint } from '@/lib/solana/connection';
+import { wagmiConfig } from '@/lib/polygon/config';
 
 import '@solana/wallet-adapter-react-ui/styles.css';
 
@@ -39,13 +41,15 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider attribute="data-theme" defaultTheme="dark" enableSystem={false}>
       <QueryClientProvider client={queryClient}>
-        <ConnectionProvider endpoint={endpoint}>
-          <WalletProvider wallets={wallets} autoConnect>
-            <WalletModalProvider>
-              {children}
-            </WalletModalProvider>
-          </WalletProvider>
-        </ConnectionProvider>
+        <WagmiProvider config={wagmiConfig}>
+          <ConnectionProvider endpoint={endpoint}>
+            <WalletProvider wallets={wallets} autoConnect>
+              <WalletModalProvider>
+                {children}
+              </WalletModalProvider>
+            </WalletProvider>
+          </ConnectionProvider>
+        </WagmiProvider>
       </QueryClientProvider>
     </ThemeProvider>
   );

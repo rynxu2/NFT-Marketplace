@@ -17,7 +17,7 @@ interface CreateAuctionParams {
   wallet: WalletContextState;
   mintAddress: string;
   startingPrice: number;
-  durationHours: number;
+  durationMinutes: number;
   minBidIncrement: number;
 }
 
@@ -51,14 +51,14 @@ export async function createAuction({
   wallet,
   mintAddress,
   startingPrice,
-  durationHours,
+  durationMinutes,
 }: CreateAuctionParams): Promise<AuctionResult> {
   if (!wallet.publicKey || !wallet.signMessage) {
     throw new Error('Wallet not connected');
   }
 
   const message = new TextEncoder().encode(
-    `NEXUS: Create auction for ${mintAddress} starting at ${startingPrice} SOL, duration ${durationHours}h`
+    `NEXUS: Create auction for ${mintAddress} starting at ${startingPrice} SOL, duration ${durationMinutes}min`
   );
   await wallet.signMessage(message);
 

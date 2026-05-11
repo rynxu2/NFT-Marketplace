@@ -40,6 +40,22 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
+    // Guard: check if NFT has an active auction
+    const { data: activeAuction } = await supabase
+      .from('auctions')
+      .select('id')
+      .eq('nft_mint', body.mint)
+      .in('status', ['active', 'ended'])
+      .limit(1)
+      .maybeSingle();
+
+    if (activeAuction) {
+      return NextResponse.json(
+        { error: 'NFT has an active auction. Cancel or settle the auction first.' },
+        { status: 409 }
+      );
+    }
+
     const { data, error } = await supabase
       .from('listings')
       .insert({

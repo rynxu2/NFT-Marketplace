@@ -10,6 +10,7 @@ import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { useTheme } from 'next-themes';
 import { shortenAddress, formatSOL, getNetwork } from '@/lib/solana/connection';
 import { useBalance } from '@/hooks/useBalance';
+import ChainSwitcher from '@/components/layout/ChainSwitcher';
 
 const NAV_LINKS = [
   { href: '/', label: 'HOME' },
@@ -17,6 +18,7 @@ const NAV_LINKS = [
   { href: '/auctions', label: 'AUCTIONS' },
   { href: '/create', label: 'CREATE' },
   { href: '/activity', label: 'ACTIVITY' },
+  { href: '/stats', label: 'STATS' },
 ];
 
 export default function Header() {
@@ -95,13 +97,16 @@ export default function Header() {
               {mounted ? (theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />) : <Sun size={18} />}
             </button>
 
+            {/* Chain Switcher */}
+            <ChainSwitcher />
+
             {/* Network Badge */}
             <span className={`hidden sm:inline-block px-2 py-0.5 text-[9px] font-[family-name:var(--font-mono)] font-bold uppercase tracking-wider ${
               network === 'devnet'
                 ? 'bg-[var(--color-signal-orange)]/20 text-[var(--color-signal-orange)]'
                 : 'bg-[var(--color-electric-lime)]/20 text-[var(--color-electric-lime)]'
             }`}>
-              {network === 'devnet' ? 'DEVNET' : 'MAINNET'}
+              {network === 'devnet' ? 'TESTNET' : 'MAINNET'}
             </span>
 
             {/* Wallet / Profile */}
