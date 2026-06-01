@@ -1,7 +1,7 @@
 import { writeContract, waitForTransactionReceipt, readContract } from '@wagmi/core';
-import { wagmiConfig, NEXUS_NFT_CONTRACT } from './config';
+import { wagmiConfig, NEXUS_NFT_CONTRACT, polygonAmoy, ensurePolygonChain } from './config';
 import { NEXUS_NFT_ABI } from './abi';
-import type { Address } from 'viem';
+import { type Address, parseGwei } from 'viem';
 
 interface MintNFTPolygonParams {
   to: string;
@@ -26,11 +26,17 @@ export async function mintNFTPolygon({
     throw new Error('Polygon NFT contract address not configured');
   }
 
+  await ensurePolygonChain();
+
   const hash = await writeContract(wagmiConfig, {
+    chainId: polygonAmoy.id,
     address: NEXUS_NFT_CONTRACT as Address,
     abi: NEXUS_NFT_ABI,
     functionName: 'safeMint',
     args: [to as Address, tokenURI],
+    maxFeePerGas: parseGwei('30'),
+    maxPriorityFeePerGas: parseGwei('26'),
+    gas: BigInt(500_000),
   });
 
   const receipt = await waitForTransactionReceipt(wagmiConfig, { hash });

@@ -75,6 +75,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         from_address: nft?.owner || '',
         to_address: offer.bidder,
         price: offer.amount,
+        chain: offer.chain || 'solana',
       });
     }
 

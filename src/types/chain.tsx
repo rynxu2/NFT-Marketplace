@@ -1,3 +1,6 @@
+import React from 'react';
+import { getChainIcon } from '@/components/ui/ChainIcon';
+
 export type ChainId = 'solana' | 'polygon';
 
 export interface ChainConfig {
@@ -11,7 +14,7 @@ export interface ChainConfig {
   rpcUrl: string;
   explorerUrl: string;
   faucetUrl?: string;
-  icon: string; // emoji
+  icon: React.ReactNode; // standard SVG icon
   color: string; // CSS color var
 }
 
@@ -26,7 +29,7 @@ export const CHAIN_CONFIGS: Record<ChainId, ChainConfig> = {
     rpcUrl: process.env.NEXT_PUBLIC_SOLANA_RPC_DEVNET || 'https://api.devnet.solana.com',
     explorerUrl: 'https://explorer.solana.com',
     faucetUrl: 'https://faucet.solana.com',
-    icon: '◎',
+    icon: getChainIcon('solana'),
     color: 'var(--accent)',
   },
   polygon: {
@@ -40,7 +43,7 @@ export const CHAIN_CONFIGS: Record<ChainId, ChainConfig> = {
     rpcUrl: process.env.NEXT_PUBLIC_POLYGON_RPC || 'https://rpc-amoy.polygon.technology/',
     explorerUrl: 'https://amoy.polygonscan.com',
     faucetUrl: 'https://faucet.polygon.technology/',
-    icon: '▲',
+    icon: getChainIcon('polygon'),
     color: 'var(--color-signal-orange)',
   },
 };
@@ -58,11 +61,16 @@ export function getChainExplorerUrl(chain: ChainId, hash: string, type: 'tx' | '
   return `${config.explorerUrl}/${type}/${hash}`;
 }
 
-export function formatChainCurrency(amount: number, chain: ChainId): string {
+export function formatChainCurrency(amount: number, chain: ChainId): React.ReactNode {
   const config = CHAIN_CONFIGS[chain];
   const formatted = new Intl.NumberFormat('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 4,
   }).format(amount);
-  return `${config.icon} ${formatted}`;
+  return (
+    <span className="inline-flex items-center gap-1.5 shrink-0 align-text-bottom">
+      {React.cloneElement(config.icon as React.ReactElement<{ size?: number }>, { size: 14 })}
+      <span>{formatted}</span>
+    </span>
+  );
 }

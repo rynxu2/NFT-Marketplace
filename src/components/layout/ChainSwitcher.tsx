@@ -90,11 +90,6 @@ export default function ChainSwitcher() {
               })}
             </div>
 
-            <div className="border-t border-[var(--border-color)] px-3 py-2">
-              <p className="text-[8px] text-[var(--text-secondary)] uppercase tracking-wider">
-                Cross-chain bridge available
-              </p>
-            </div>
           </motion.div>
         )}
       </AnimatePresence>

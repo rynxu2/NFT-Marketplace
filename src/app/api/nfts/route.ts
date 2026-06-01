@@ -8,14 +8,20 @@ export async function GET(request: NextRequest) {
     const owner = searchParams.get('owner');
     const creator = searchParams.get('creator');
     const collection = searchParams.get('collection');
+    const collectionId = searchParams.get('collection_id');
     const search = searchParams.get('search');
+    const chain = searchParams.get('chain');
     const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100);
 
     let query = supabase.from('nfts').select('*').order('created_at', { ascending: false }).limit(limit);
 
+    // Chain filter — completely separate chain data
+    if (chain) query = query.eq('chain', chain);
+
     if (owner) query = query.eq('owner', owner);
     if (creator) query = query.eq('creator', creator);
-    if (collection) query = query.eq('collection', collection);
+    if (collectionId) query = query.eq('collection_id', collectionId);
+    else if (collection) query = query.eq('collection', collection);
     // Sanitize search input to prevent injection
     if (search) {
       const sanitized = search.replace(/[%_\\]/g, '');
@@ -57,6 +63,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Wallet mismatch' }, { status: 403 });
     }
 
+    const collectionSlug = body.collection
+      ? body.collection.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').slice(0, 30)
+      : null;
+
     const { data, error } = await supabase
       .from('nfts')
       .insert({
@@ -68,9 +78,14 @@ export async function POST(request: NextRequest) {
         owner: body.owner,
         creator: body.creator,
         collection: body.collection || null,
+        collection_slug: collectionSlug,
+        collection_id: body.collection_id || null,
         attributes: body.attributes || [],
         metadata_uri: body.metadata_uri || null,
         tx_signature: body.tx_signature || null,
+        chain: body.chain || 'solana',
+        token_id: body.token_id || null,
+        contract_address: body.contract_address || null,
       })
       .select()
       .single();

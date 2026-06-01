@@ -5,24 +5,26 @@ import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Gavel, Shield, Loader2, Trophy, Clock, CheckCircle2, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { useChainStore } from '@/store/useChainStore';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Badge from '@/components/ui/Badge';
 import Countdown from '@/components/auction/Countdown';
 import EmptyState from '@/components/ui/EmptyState';
-import { formatSOL, shortenAddress, timeAgo } from '@/lib/solana/connection';
-import { SOL_PRICE_USD } from '@/lib/constants';
-import { usePlaceBid, useSettleAuction } from '@/hooks/useAuction';
-import { useBalance } from '@/hooks/useBalance';
+import { shortenAddress, timeAgo } from '@/lib/solana/connection';
+import { formatChainCurrency, CHAIN_CONFIGS } from '@/types/chain';
+import { getChainPriceUSD } from '@/lib/constants';
+import { usePlaceBid, useSettleAuction, useVoidAuction } from '@/hooks/useAuction';
 import { useFetchAuctions } from '@/hooks/useData';
+import { useChainWallet } from '@/hooks/useChainWallet';
 
 export default function AuctionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { publicKey } = useWallet();
+  const { address: walletAddress, connected, balance } = useChainWallet();
+  const { activeChain } = useChainStore();
   const { bid: placeBidFn } = usePlaceBid();
   const { settle } = useSettleAuction();
-  const { balance } = useBalance();
+  const { voidAuction } = useVoidAuction();
 
   // Poll every 5s for live bid updates (stops when settled)
   const [isSettledState, setIsSettledState] = useState(false);
@@ -35,6 +37,12 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
   const [auctionEnded, setAuctionEnded] = useState(false);
 
   const auction = useMemo(() => auctions.find((a) => a.id === id), [id, auctions]);
+
+  // Sort bids by amount descending (highest first) to guarantee the correct leader/winner order
+  const sortedBids = useMemo(() => {
+    if (!auction?.bids) return [];
+    return [...auction.bids].sort((a, b) => b.amount - a.amount);
+  }, [auction?.bids]);
 
   // Stop polling when auction is settled
   useEffect(() => {
@@ -74,10 +82,13 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
   }
 
   const isEnded = auctionEnded || new Date(auction.endTime).getTime() <= Date.now();
-  const isSeller = publicKey && auction.seller === publicKey.toBase58();
-  const isHighestBidder = publicKey && auction.highestBidder === publicKey.toBase58();
+  const isSeller = !!(walletAddress && auction.seller && walletAddress.toLowerCase() === auction.seller.toLowerCase());
+  const isHighestBidder = !!(walletAddress && auction.highestBidder && walletAddress.toLowerCase() === auction.highestBidder.toLowerCase());
   const isSettled = auction.status === 'settled';
-  const canSettle = isEnded && !isSettled && auction.highestBidder && (isSeller || isHighestBidder);
+  // Only the winner can claim/settle the auction since they must authorize payment on-chain
+  const canSettle = isEnded && !isSettled && auction.highestBidder && isHighestBidder && !isSeller;
+  // Seller can void the auction if it ends with bids and winner refuses to pay
+  const canVoid = isEnded && !isSettled && isSeller && !!auction.highestBidder;
   const minBid = auction.currentBid + auction.minBidIncrement;
 
   const handleBid = async () => {
@@ -96,6 +107,17 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
     setProcessing(false);
     setIsSettledState(true); // Stop polling
     refresh();
+  };
+
+  const handleVoid = async () => {
+    if (!window.confirm('Bạn có chắc chắn muốn hủy phiên đấu giá này và nhận lại NFT không?')) return;
+    setProcessing(true);
+    const success = await voidAuction(auction);
+    setProcessing(false);
+    if (success) {
+      setIsSettledState(true);
+      refresh();
+    }
   };
 
   return (
@@ -196,7 +218,7 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
                         </p>
                         <p className="text-xs text-[var(--text-secondary)] mt-1">
                           Winner: <span className="font-[family-name:var(--font-mono)] text-[var(--accent)]">{shortenAddress(auction.highestBidder)}</span>
-                          {' '}at <span className="font-[family-name:var(--font-mono)] text-[var(--color-signal-orange)]">◎ {formatSOL(auction.currentBid)}</span>
+                          {' '}at <span className="font-[family-name:var(--font-mono)] text-[var(--color-signal-orange)]">{formatChainCurrency(auction.currentBid, auction.nft?.chain || 'solana')}</span>
                         </p>
                       </>
                     )}
@@ -214,10 +236,10 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
                   {isEnded ? 'Final Bid' : 'Current Bid'}
                 </p>
                 <p className="font-[family-name:var(--font-mono)] text-2xl font-bold text-[var(--color-signal-orange)]">
-                  ◎ {formatSOL(auction.currentBid)}
+                  {formatChainCurrency(auction.currentBid, auction.nft?.chain || 'solana')}
                 </p>
                 <p className="text-xs text-[var(--text-secondary)]">
-                  ≈ ${(auction.currentBid * SOL_PRICE_USD).toFixed(2)}
+                  ≈ ${(auction.currentBid * getChainPriceUSD(auction.nft?.chain || 'solana')).toFixed(2)}
                 </p>
               </div>
               <div>
@@ -230,7 +252,7 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
                   </p>
                 ) : (
                   <p className="font-[family-name:var(--font-mono)] text-lg font-bold">
-                    ◎ {auction.minBidIncrement}
+                    {formatChainCurrency(auction.minBidIncrement, auction.nft?.chain || 'solana')}
                   </p>
                 )}
               </div>
@@ -241,14 +263,14 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
               <div className="space-y-3">
                 {balance !== null && (
                   <p className="text-[10px] text-[var(--text-secondary)]">
-                    Balance: <span className="font-[family-name:var(--font-mono)] text-[var(--accent)]">◎ {formatSOL(balance)}</span>
+                    Balance: <span className="font-[family-name:var(--font-mono)] text-[var(--accent)]">{formatChainCurrency(balance, auction.nft?.chain || 'solana')}</span>
                   </p>
                 )}
                 <div className="flex gap-3">
                   <div className="flex-1">
                     <Input
                       type="number"
-                      placeholder={`Min: ${minBid.toFixed(2)} SOL`}
+                      placeholder={`Min: ${minBid.toFixed(2)} ${CHAIN_CONFIGS[auction.nft?.chain || 'solana'].symbol}`}
                       step={auction.minBidIncrement}
                       min={minBid}
                       value={bidAmount}
@@ -264,47 +286,68 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
               </div>
             )}
 
-            {/* Settlement Actions */}
+            {/* Winner Settlement Actions */}
             {canSettle && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 className="mt-4 space-y-3"
               >
-                {/* Seller settle button */}
-                {isSeller && (
-                  <Button size="lg" className="w-full" onClick={handleSettle} loading={processing}>
-                    <Shield size={16} />
-                    {processing ? 'SETTLING...' : 'SETTLE AUCTION'}
-                  </Button>
-                )}
+                <Button
+                  size="lg"
+                  className="w-full"
+                  onClick={handleSettle}
+                  loading={processing}
+                  style={{
+                    background: 'linear-gradient(135deg, var(--color-signal-orange), var(--color-electric-lime))',
+                    color: '#000',
+                  }}
+                >
+                  <Trophy size={16} />
+                  {processing ? 'CLAIMING...' : '🏆 CLAIM YOUR NFT'}
+                </Button>
 
-                {/* Winner claim button */}
-                {isHighestBidder && !isSeller && (
-                  <Button
-                    size="lg"
-                    className="w-full"
-                    onClick={handleSettle}
-                    loading={processing}
-                    style={{
-                      background: 'linear-gradient(135deg, var(--color-signal-orange), var(--color-electric-lime))',
-                      color: '#000',
-                    }}
-                  >
-                    <Trophy size={16} />
-                    {processing ? 'CLAIMING...' : '🏆 CLAIM YOUR NFT'}
-                  </Button>
-                )}
-
-                {/* Info about what settlement does */}
                 <div className="flex items-start gap-2 p-3 bg-[var(--bg-primary)] border border-[var(--border-color)]">
                   <AlertTriangle size={14} className="text-[var(--color-signal-orange)] shrink-0 mt-0.5" />
                   <p className="text-[10px] text-[var(--text-secondary)] leading-relaxed">
-                    {isSeller
-                      ? 'Settling will transfer the NFT to the winner and finalize the auction.'
-                      : 'Claiming will transfer the NFT to your wallet. The seller has already received payment.'}
+                    Claiming will transfer the NFT to your wallet and execute the on-chain payment transaction to the seller.
                   </p>
                 </div>
+              </motion.div>
+            )}
+
+            {/* Seller Settlement Actions */}
+            {canVoid && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-4 space-y-3"
+              >
+                {auction.highestBidder ? (
+                  /* Has bids - show notice to wait for Winner, and void option as fallback */
+                  <div className="p-4 bg-[var(--bg-primary)] border border-[var(--color-signal-orange)]/30 space-y-3">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle size={16} className="text-[var(--color-signal-orange)] shrink-0 mt-0.5" />
+                      <div>
+                        <h4 className="text-xs font-[family-name:var(--font-display)] uppercase tracking-wider text-[var(--color-signal-orange)] font-bold">
+                          Awaiting Winner Settlement (Chờ Winner thanh toán)
+                        </h4>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* No bids - ended and failed */
+                  <div className="p-3 bg-[var(--bg-primary)] border border-[var(--border-color)]">
+                    <p className="text-[10px] text-[var(--text-secondary)] leading-relaxed">
+                      Đấu giá đã kết thúc và không có lượt đặt giá nào. Vui lòng hủy đấu giá để thu hồi NFT.
+                    </p>
+                  </div>
+                )}
+
+                <Button size="lg" variant="secondary" className="w-full text-[var(--color-crimson)] border-[var(--color-crimson)]/20 hover:bg-[var(--color-crimson)]/5" onClick={handleVoid} loading={processing}>
+                  <AlertTriangle size={16} />
+                  {processing ? 'CANCELLING...' : 'VOID / CANCEL AUCTION (Hủy đấu giá)'}
+                </Button>
               </motion.div>
             )}
 
@@ -324,7 +367,7 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
                 {isHighestBidder && (
                   <p className="text-center mt-2">
                     <Link
-                      href={`/profile/${publicKey!.toBase58()}`}
+                      href={`/profile/${walletAddress}`}
                       className="text-xs text-[var(--accent)] hover:underline font-[family-name:var(--font-display)] uppercase tracking-wider"
                     >
                       View in Your Profile →
@@ -355,12 +398,12 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
           <div className="bg-[var(--bg-secondary)] border border-[var(--border-color)]">
             <div className="px-4 py-3 border-b border-[var(--border-color)]">
               <h3 className="text-xs font-[family-name:var(--font-display)] uppercase tracking-wider text-[var(--accent)]">
-                Bid History ({auction.bids.length})
+                Bid History ({sortedBids.length})
               </h3>
             </div>
-            {auction.bids.length > 0 ? (
+            {sortedBids.length > 0 ? (
               <div className="divide-y divide-[var(--border-color)]">
-                {[...auction.bids].reverse().map((bid, i) => (
+                {sortedBids.map((bid, i) => (
                   <div key={bid.id} className="px-4 py-3 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div
@@ -371,7 +414,7 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
                       <div>
                         <p className="text-xs font-[family-name:var(--font-mono)]">
                           {shortenAddress(bid.bidder)}
-                          {publicKey && bid.bidder === publicKey.toBase58() && (
+                          {walletAddress && bid.bidder.toLowerCase() === walletAddress.toLowerCase() && (
                             <span className="text-[var(--accent)] ml-1">(You)</span>
                           )}
                           {isEnded && i === 0 && (
@@ -384,7 +427,7 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
                       </div>
                     </div>
                     <p className="font-[family-name:var(--font-mono)] text-sm font-semibold">
-                      ◎ {formatSOL(bid.amount)}
+                      {formatChainCurrency(bid.amount, auction.nft?.chain || 'solana')}
                     </p>
                   </div>
                 ))}

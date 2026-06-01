@@ -8,7 +8,9 @@ import {
   Trophy, ArrowUpRight, Crown, Palette, Activity,
 } from 'lucide-react';
 import Badge from '@/components/ui/Badge';
-import { shortenAddress, formatSOL } from '@/lib/solana/connection';
+import { shortenAddress } from '@/lib/solana/connection';
+import { formatChainCurrency } from '@/types/chain';
+import { useChainStore } from '@/store/useChainStore';
 import Link from 'next/link';
 
 interface GlobalStats {
@@ -54,11 +56,12 @@ type ActiveTab = 'collections' | 'traders' | 'creators';
 
 export default function StatsPage() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('collections');
+  const { activeChain } = useChainStore();
 
   const { data: stats, isLoading } = useQuery<StatsData>({
-    queryKey: ['stats'],
+    queryKey: ['stats', activeChain],
     queryFn: async () => {
-      const res = await fetch('/api/stats');
+      const res = await fetch(`/api/stats?chain=${activeChain}`);
       if (!res.ok) throw new Error('Failed to fetch stats');
       return res.json();
     },
@@ -66,7 +69,7 @@ export default function StatsPage() {
 
   const globalCards = stats
     ? [
-        { label: 'Total Volume', value: `◎ ${formatSOL(stats.global.totalVolume)}`, icon: TrendingUp, color: 'var(--accent)' },
+        { label: 'Total Volume', value: formatChainCurrency(stats.global.totalVolume, activeChain), icon: TrendingUp, color: 'var(--accent)' },
         { label: 'NFTs Created', value: stats.global.totalNFTs, icon: Layers, color: 'var(--color-electric-lime)' },
         { label: 'Creators', value: stats.global.totalCreators, icon: Users, color: 'var(--color-signal-orange)' },
         { label: 'Active Listings', value: stats.global.totalListings, icon: Tag, color: 'var(--accent)' },
@@ -216,12 +219,12 @@ export default function StatsPage() {
                       </div>
                       <div className="sm:col-span-2 text-right">
                         <span className="text-sm font-[family-name:var(--font-mono)] font-semibold text-[var(--accent)]">
-                          ◎ {formatSOL(col.volume)}
+                          {formatChainCurrency(col.volume, activeChain)}
                         </span>
                       </div>
                       <div className="sm:col-span-2 text-right">
                         <span className="text-sm font-[family-name:var(--font-mono)]">
-                          {col.floorPrice > 0 ? `◎ ${formatSOL(col.floorPrice)}` : '—'}
+                          {col.floorPrice > 0 ? formatChainCurrency(col.floorPrice, activeChain) : '—'}
                         </span>
                       </div>
                       <div className="sm:col-span-1 text-right">
@@ -290,17 +293,17 @@ export default function StatsPage() {
                       </div>
                       <div className="sm:col-span-2 text-right">
                         <span className="text-sm font-[family-name:var(--font-mono)] font-bold text-[var(--accent)]">
-                          ◎ {formatSOL(trader.totalVolume)}
+                          {formatChainCurrency(trader.totalVolume, activeChain)}
                         </span>
                       </div>
                       <div className="sm:col-span-2 text-right">
                         <span className="text-xs font-[family-name:var(--font-mono)] text-[var(--color-electric-lime)]">
-                          ◎ {formatSOL(trader.buyVolume)}
+                          {formatChainCurrency(trader.buyVolume, activeChain)}
                         </span>
                       </div>
                       <div className="sm:col-span-2 text-right">
                         <span className="text-xs font-[family-name:var(--font-mono)] text-[var(--color-signal-orange)]">
-                          ◎ {formatSOL(trader.sellVolume)}
+                          {formatChainCurrency(trader.sellVolume, activeChain)}
                         </span>
                       </div>
                       <div className="sm:col-span-2 text-right">
@@ -355,7 +358,7 @@ export default function StatsPage() {
                       </div>
                       <div className="sm:col-span-4 text-right">
                         <span className="text-sm font-[family-name:var(--font-mono)] font-bold text-[var(--accent)]">
-                          ◎ {formatSOL(creator.totalVolume)}
+                          {formatChainCurrency(creator.totalVolume, activeChain)}
                         </span>
                       </div>
                     </motion.div>

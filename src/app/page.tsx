@@ -10,7 +10,8 @@ import Button from '@/components/ui/Button';
 import EmptyState from '@/components/ui/EmptyState';
 import { NFTCardSkeleton } from '@/components/ui/Skeleton';
 import { useFetchNFTs, useFetchListings, useFetchAuctions } from '@/hooks/useData';
-import { formatSOL } from '@/lib/solana/connection';
+import { formatChainCurrency, CHAIN_CONFIGS } from '@/types/chain';
+import { useChainStore } from '@/store/useChainStore';
 
 const NFTCard = dynamic(() => import('@/components/nft/NFTCard'), {
   loading: () => <NFTCardSkeleton />,
@@ -33,10 +34,14 @@ export default function HomePage() {
   const { nfts: allNFTs, loading: nftsLoading } = useFetchNFTs();
   const { listings, loading: listingsLoading } = useFetchListings();
   const { auctions, loading: auctionsLoading } = useFetchAuctions();
+  const { activeChain } = useChainStore();
+  const chainConfig = CHAIN_CONFIGS[activeChain];
+
+  const [currentTime] = React.useState(() => Date.now());
 
   const listedNFTs = listings.map((l) => l.nft).slice(0, 4);
   const trendingNFTs = allNFTs.slice(0, 4);
-  const liveAuctions = auctions.filter((a) => a.status === 'active' || new Date(a.endTime).getTime() > Date.now()).slice(0, 3);
+  const liveAuctions = auctions.filter((a) => a.status === 'active' || new Date(a.endTime).getTime() > currentTime).slice(0, 3);
   const heroNFT = listedNFTs[0] || allNFTs[0];
 
   // Derive collections from NFTs
@@ -54,8 +59,9 @@ export default function HomePage() {
     return Array.from(grouped.values()).slice(0, 4);
   }, [allNFTs]);
 
+  const totalVol = listings.reduce((sum, l) => sum + l.price, 0);
   const stats = [
-    { label: 'Total Volume', value: `${formatSOL(listings.reduce((sum, l) => sum + l.price, 0))} SOL`, icon: BarChart3 },
+    { label: 'Total Volume', value: `${totalVol.toFixed(2)}`, icon: BarChart3 },
     { label: 'NFTs Created', value: String(allNFTs.length), icon: Zap },
     { label: 'Creators', value: String(new Set(allNFTs.map((n) => n.creator)).size), icon: Users },
     { label: 'Auctions Live', value: String(liveAuctions.length), icon: Gavel },
@@ -86,7 +92,7 @@ export default function HomePage() {
               <m.div variants={fadeUp} className="mb-4">
                 <span className="inline-flex items-center gap-2 px-3 py-1.5 border border-[var(--accent)]/30 text-[var(--accent)] text-[10px] font-[family-name:var(--font-display)] uppercase tracking-widest">
                   <span className="w-1.5 h-1.5 bg-[var(--color-electric-lime)] rounded-full animate-pulse" />
-                  LIVE ON SOLANA DEVNET
+                  LIVE ON {chainConfig.name.toUpperCase()} {chainConfig.testnetName.toUpperCase()}
                 </span>
               </m.div>
 
@@ -105,7 +111,7 @@ export default function HomePage() {
                 variants={fadeUp}
                 className="text-[var(--text-secondary)] text-base sm:text-lg max-w-[28rem] mb-8 leading-relaxed"
               >
-                The next-gen NFT marketplace powered by Solana. Trade at lightning speed with near-zero fees.
+                The next-gen NFT marketplace powered by {chainConfig.name}. Trade at lightning speed with near-zero fees.
               </m.p>
 
               <m.div variants={fadeUp} className="flex flex-wrap gap-3">
@@ -174,7 +180,7 @@ export default function HomePage() {
                         <div>
                           <p className="text-[10px] text-[var(--text-secondary)] uppercase">Price</p>
                           <p className="font-[family-name:var(--font-mono)] text-xl font-bold text-[var(--accent)]">
-                            ◎ {formatSOL(heroNFT.price || 0)}
+                            {formatChainCurrency(heroNFT.price || 0, heroNFT.chain || activeChain)}
                           </p>
                         </div>
                         <Link href={`/nft/${heroNFT.mint}`}>
@@ -287,14 +293,22 @@ export default function HomePage() {
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
-              className="mb-8"
+              className="flex items-center justify-between mb-8"
             >
-              <h2 className="font-[family-name:var(--font-display)] text-xl font-bold uppercase tracking-wider mb-2">
-                Top Collections
-              </h2>
-              <p className="text-sm text-[var(--text-secondary)]">
-                Curated collections from the best creators
-              </p>
+              <div>
+                <h2 className="font-[family-name:var(--font-display)] text-xl font-bold uppercase tracking-wider mb-2">
+                  Top Collections
+                </h2>
+                <p className="text-sm text-[var(--text-secondary)]">
+                  Curated collections from the best creators
+                </p>
+              </div>
+              <Link
+                href="/collections"
+                className="flex items-center gap-2 text-xs font-[family-name:var(--font-display)] uppercase tracking-wider text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors"
+              >
+                VIEW ALL <ArrowRight size={14} />
+              </Link>
             </m.div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -363,7 +377,7 @@ export default function HomePage() {
                 Start Creating Today
               </h2>
               <p className="text-[var(--text-secondary)] max-w-[28rem] mx-auto mb-8">
-                Join the next generation of digital creators. Mint your first NFT on Solana in minutes.
+                Join the next generation of digital creators. Mint your first NFT on {CHAIN_CONFIGS[activeChain].name} in minutes.
               </p>
               <Link href="/create">
                 <Button size="lg">

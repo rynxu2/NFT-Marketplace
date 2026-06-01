@@ -7,6 +7,8 @@ import NFTGrid from '@/components/nft/NFTGrid';
 import Input from '@/components/ui/Input';
 import { useFetchNFTs, useFetchListings } from '@/hooks/useData';
 import { CATEGORIES, SORT_OPTIONS } from '@/lib/constants';
+import { CHAIN_CONFIGS } from '@/types/chain';
+import { useChainStore } from '@/store/useChainStore';
 import type { SortOption } from '@/types/nft';
 
 export default function ExplorePage() {
@@ -18,6 +20,7 @@ export default function ExplorePage() {
   const [priceMax, setPriceMax] = useState('');
   const [showListedOnly, setShowListedOnly] = useState(false);
   const { nfts: allNFTs, loading } = useFetchNFTs();
+  const { activeChain } = useChainStore();
   const { listings } = useFetchListings();
 
   // Build a set of listed mints for quick lookup
@@ -181,7 +184,7 @@ export default function ExplorePage() {
                 {/* Price Range */}
                 <div>
                   <label className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider block mb-2">
-                    Price Range (SOL)
+                    Price Range ({CHAIN_CONFIGS[activeChain].symbol})
                   </label>
                   <div className="flex gap-2">
                     <input

@@ -4,7 +4,7 @@ import React from 'react';
 import { motion, type HTMLMotionProps } from 'framer-motion';
 
 interface ButtonProps extends Omit<HTMLMotionProps<'button'>, 'children'> {
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'cyber-cyan' | 'cyber-lime';
   size?: 'sm' | 'md' | 'lg';
   loading?: boolean;
   children: React.ReactNode;
@@ -15,6 +15,8 @@ const variants = {
   secondary: 'bg-transparent border border-[var(--accent)] text-[var(--accent)] clip-corner-sm hover:bg-[var(--accent)] hover:text-[var(--bg-primary)]',
   ghost: 'bg-transparent text-[var(--text-secondary)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10',
   danger: 'bg-transparent border border-[var(--color-crimson)] text-[var(--color-crimson)] clip-corner-sm hover:bg-[var(--color-crimson)] hover:text-white',
+  'cyber-cyan': 'border border-[var(--color-neon-cyan)]/30 text-[var(--color-neon-cyan)] bg-[var(--color-neon-cyan)]/10 hover:bg-[var(--color-neon-cyan)]/20 hover:border-[var(--color-neon-cyan)] hover:shadow-[0_0_15px_var(--color-neon-cyan-glow)] clip-corner-sm',
+  'cyber-lime': 'border border-[var(--color-electric-lime)]/30 text-[var(--color-electric-lime)] bg-[var(--color-electric-lime)]/10 hover:bg-[var(--color-electric-lime)]/20 hover:border-[var(--color-electric-lime)] hover:shadow-[0_0_15px_rgba(163,255,18,0.4)] clip-corner-sm',
 };
 
 const sizes = {

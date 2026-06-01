@@ -65,6 +65,7 @@ export async function POST(
       from_address: body.bidder,
       price: body.amount,
       tx_signature: body.tx_signature || null,
+      chain: auction.chain || 'solana',
     });
 
     return NextResponse.json({ data: bid });

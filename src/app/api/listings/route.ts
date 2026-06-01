@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const chain = searchParams.get('chain');
+
     const { data, error } = await supabase
       .from('listings')
       .select('*')
@@ -15,19 +18,26 @@ export async function GET() {
 
     // Enrich with NFT data
     const mints = (data || []).map((l) => l.mint);
-    let nfts: Record<string, unknown> = {};
+    let nfts: Record<string, Record<string, unknown>> = {};
 
     if (mints.length > 0) {
-      const { data: nftData } = await supabase.from('nfts').select('*').in('mint', mints);
+      let nftQuery = supabase.from('nfts').select('*').in('mint', mints);
+      // Chain filter on the NFT side
+      if (chain) nftQuery = nftQuery.eq('chain', chain);
+
+      const { data: nftData } = await nftQuery;
       if (nftData) {
         nfts = Object.fromEntries(nftData.map((n) => [n.mint, n]));
       }
     }
 
-    const enriched = (data || []).map((listing) => ({
-      ...listing,
-      nft: nfts[listing.mint] || null,
-    }));
+    // Only return listings whose NFT exists (and matches chain filter)
+    const enriched = (data || [])
+      .filter((listing) => nfts[listing.mint])
+      .map((listing) => ({
+        ...listing,
+        nft: nfts[listing.mint],
+      }));
 
     return NextResponse.json({ data: enriched });
   } catch (error) {
@@ -41,15 +51,19 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     // Guard: check if NFT has an active auction
-    const { data: activeAuction } = await supabase
+    const { data: activeAuctions } = await supabase
       .from('auctions')
-      .select('id')
+      .select('id, end_time, highest_bidder, status')
       .eq('nft_mint', body.mint)
-      .in('status', ['active', 'ended'])
-      .limit(1)
-      .maybeSingle();
+      .in('status', ['active', 'ended']);
 
-    if (activeAuction) {
+    const hasRealActiveAuction = (activeAuctions || []).some((auc) => {
+      const isExpired = new Date(auc.end_time).getTime() <= Date.now();
+      const hasBids = !!auc.highest_bidder;
+      return !isExpired || hasBids;
+    });
+
+    if (hasRealActiveAuction) {
       return NextResponse.json(
         { error: 'NFT has an active auction. Cancel or settle the auction first.' },
         { status: 409 }
@@ -63,6 +77,7 @@ export async function POST(request: NextRequest) {
         seller: body.seller,
         price: body.price,
         tx_signature: body.tx_signature || null,
+        chain: body.chain || 'solana',
       })
       .select()
       .single();
@@ -84,6 +99,7 @@ export async function POST(request: NextRequest) {
       to_address: '',
       price: body.price,
       tx_signature: body.tx_signature || null,
+      chain: body.chain || 'solana',
     });
 
     return NextResponse.json({ data });
@@ -110,12 +126,23 @@ export async function DELETE(request: NextRequest) {
     // Update NFT listed status
     await supabase.from('nfts').update({ listed: false, price: null }).eq('mint', body.mint);
 
+    // Fetch NFT to get rich details for logging
+    const { data: nft } = await supabase
+      .from('nfts')
+      .select('chain, name, image, collection')
+      .eq('mint', body.mint)
+      .single();
+
     // Log activity
     await supabase.from('activities').insert({
       type: 'cancel',
       nft_mint: body.mint,
+      nft_name: nft?.name || '',
+      nft_image: nft?.image || '',
       from_address: body.seller || '',
       to_address: '',
+      collection: nft?.collection || null,
+      chain: nft?.chain || 'solana',
     });
 
     return NextResponse.json({ success: true });

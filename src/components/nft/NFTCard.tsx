@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Heart, ShoppingCart, Gavel } from 'lucide-react';
 import type { NFT } from '@/types/nft';
-import { formatSOL } from '@/lib/solana/connection';
+import { formatChainCurrency } from '@/types/chain';
 import Badge from '@/components/ui/Badge';
 import { useFetchAuctions } from '@/hooks/useData';
 import { useFavorites } from '@/hooks/useFavorites';
@@ -24,8 +24,12 @@ export default function NFTCard({ nft, index = 0 }: NFTCardProps) {
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
 
   const { auctions } = useFetchAuctions();
+  const [currentTime] = useState(() => Date.now());
   const activeAuction = auctions.find(
-    (a) => a.nft?.mint === nft.mint && (a.status === 'active' || (a.status !== 'settled' && new Date(a.endTime).getTime() > Date.now()))
+    (a) =>
+      a.nft?.mint === nft.mint &&
+      a.status !== 'settled' &&
+      (new Date(a.endTime).getTime() > currentTime || !!a.highestBidder)
   );
 
   const handleMouseMove = (e: React.MouseEvent) => {
@@ -95,7 +99,6 @@ export default function NFTCard({ nft, index = 0 }: NFTCardProps) {
                 style={{ color: CHAIN_CONFIGS[nft.chain]?.color || 'var(--accent)' }}
               >
                 {CHAIN_CONFIGS[nft.chain]?.icon} {CHAIN_CONFIGS[nft.chain]?.name}
-                {nft.bridgeOrigin && ' ⚡'}
               </div>
             )}
 
@@ -149,14 +152,14 @@ export default function NFTCard({ nft, index = 0 }: NFTCardProps) {
                 <div>
                   <p className="text-[10px] text-[var(--color-signal-orange)] uppercase tracking-wider mb-0.5">Current Bid</p>
                   <p className="text-sm font-[family-name:var(--font-mono)] font-semibold text-[var(--color-signal-orange)]">
-                    ◎ {formatSOL(activeAuction.currentBid)}
+                    {formatChainCurrency(activeAuction.currentBid, nft.chain || 'solana')}
                   </p>
                 </div>
               ) : nft.listed && nft.price ? (
                 <div>
                   <p className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider mb-0.5">Price</p>
                   <p className="text-sm font-[family-name:var(--font-mono)] font-semibold text-[var(--accent)]">
-                    ◎ {formatSOL(nft.price)}
+                    {formatChainCurrency(nft.price, nft.chain || 'solana')}
                   </p>
                 </div>
               ) : (

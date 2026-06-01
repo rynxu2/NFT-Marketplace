@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { Activity } from '@/types/activity';
 
@@ -42,8 +42,8 @@ export default function PriceChart({ activities }: PriceChartProps) {
       <h3 className="text-xs font-[family-name:var(--font-display)] uppercase tracking-wider text-[var(--accent)] mb-4">
         Price History
       </h3>
-      <div className="h-48">
-        <ResponsiveContainer width="100%" height="100%">
+      <div className="h-48" style={{ minWidth: 0, minHeight: 192 }}>
+        <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100}>
           <AreaChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
             <defs>
               <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">

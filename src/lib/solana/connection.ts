@@ -151,3 +151,25 @@ export function isValidPublicKey(address: string): boolean {
     return false;
   }
 }
+
+/**
+ * Format and extract detailed logs from a Solana SendTransactionError.
+ */
+export function getSolanaErrorDetails(err: unknown): string {
+  if (err && typeof err === 'object') {
+    // If it has logs array
+    if ('logs' in err && Array.isArray((err as any).logs)) {
+      return `${(err as any).message || 'Solana Transaction Failed'}. Logs: ${JSON.stringify((err as any).logs)}`;
+    }
+    // If it has getLogs function
+    if (typeof (err as any).getLogs === 'function') {
+      try {
+        const logs = (err as any).getLogs();
+        if (Array.isArray(logs)) {
+          return `${(err as any).message || 'Solana Transaction Failed'}. Logs: ${JSON.stringify(logs)}`;
+        }
+      } catch {}
+    }
+  }
+  return err instanceof Error ? err.message : String(err);
+}

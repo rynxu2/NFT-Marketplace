@@ -33,12 +33,12 @@ export interface NFT {
   listed: boolean;
   collection?: string;
   collectionSlug?: string;
+  collectionId?: string;
   attributes: NFTAttribute[];
   createdAt: string;
   chain: ChainId;
   tokenId?: string; // ERC-721 token ID (Polygon)
   contractAddress?: string; // ERC-721 contract address (Polygon)
-  bridgeOrigin?: ChainId; // original chain if bridged
 }
 
 export interface NFTListing {

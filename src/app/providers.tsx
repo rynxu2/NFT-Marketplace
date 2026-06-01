@@ -3,8 +3,6 @@
 import React, { useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
-import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom';
-import { SolflareWalletAdapter } from '@solana/wallet-adapter-solflare';
 import { WagmiProvider } from 'wagmi';
 import { ThemeProvider } from 'next-themes';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -33,10 +31,8 @@ const queryClient = new QueryClient({
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   const endpoint = useMemo(() => getRpcEndpoint(), []);
-  const wallets = useMemo(
-    () => [new PhantomWalletAdapter(), new SolflareWalletAdapter()],
-    []
-  );
+  // Empty array → auto-detect all Wallet Standard wallets (Bitget, MetaMask, etc.)
+  const wallets = useMemo(() => [], []);
 
   return (
     <ThemeProvider attribute="data-theme" defaultTheme="dark" enableSystem={false}>

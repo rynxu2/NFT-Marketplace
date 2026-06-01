@@ -5,26 +5,31 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Upload, Zap, ImagePlus, X, Plus, Trash2, CheckCircle, Loader2, ExternalLink } from 'lucide-react';
-import { useWallet } from '@solana/wallet-adapter-react';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
+import CollectionPicker from '@/components/collections/CollectionPicker';
 import { useMintNFT, type MintStep } from '@/hooks/useMint';
-import { getExplorerUrl, getNetwork } from '@/lib/solana/connection';
+import { useChainWallet } from '@/hooks/useChainWallet';
+import { useChainStore } from '@/store/useChainStore';
+import { CHAIN_CONFIGS, getChainExplorerUrl } from '@/types/chain';
 
 const STEP_LABELS: Record<MintStep, string> = {
   idle: '',
   'uploading-image': 'Uploading image to IPFS...',
   'uploading-metadata': 'Uploading metadata to IPFS...',
-  minting: 'Minting on Solana blockchain...',
+  minting: 'Minting on blockchain...',
   success: 'NFT Minted Successfully!',
   error: 'Minting failed',
 };
 
 export default function CreatePage() {
-  const { connected } = useWallet();
+  const { connected, address } = useChainWallet();
+  const { activeChain } = useChainStore();
+  const chainConfig = CHAIN_CONFIGS[activeChain];
   const { mint, step, error, result, reset } = useMintNFT();
   const [preview, setPreview] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [collectionId, setCollectionId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -68,6 +73,7 @@ export default function CreatePage() {
       description: formData.description,
       royalty: parseInt(formData.royalty) || 5,
       collection: formData.collection || undefined,
+      collection_id: collectionId || undefined,
       attributes: attributes.filter((a) => a.trait_type && a.value),
     });
   };
@@ -81,7 +87,6 @@ export default function CreatePage() {
   };
 
   const isMinting = step !== 'idle' && step !== 'success' && step !== 'error';
-  const network = getNetwork();
 
   return (
     <div className="min-h-screen">
@@ -91,10 +96,10 @@ export default function CreatePage() {
             Create NFT
           </h1>
           <p className="text-sm text-[var(--text-secondary)] mb-1">
-            Mint your digital artwork on Solana blockchain
+            Mint your digital artwork on {chainConfig.name}
           </p>
           <p className="text-xs text-[var(--accent)] font-[family-name:var(--font-mono)] mb-8">
-            Network: {network === 'devnet' ? 'Solana Devnet' : 'Solana Mainnet'}
+            Network: {chainConfig.name} {chainConfig.testnetName}
           </p>
         </motion.div>
 
@@ -120,7 +125,7 @@ export default function CreatePage() {
                     <p className="text-[var(--text-secondary)]">
                       Tx:{' '}
                       <a
-                        href={getExplorerUrl(result.txSignature)}
+                        href={getChainExplorerUrl(activeChain, result.txSignature, 'tx')}
                         target="_blank"
                         rel="noreferrer"
                         className="text-[var(--accent)] hover:underline inline-flex items-center gap-1"
@@ -288,13 +293,20 @@ export default function CreatePage() {
               </div>
             </div>
 
-            <Input
-              label="Collection (Optional)"
-              placeholder="e.g., Cyber Sentinels"
-              value={formData.collection}
-              onChange={(e) => setFormData({ ...formData, collection: e.target.value })}
-              disabled={isMinting}
-            />
+            <div>
+              <label className="block text-xs font-[family-name:var(--font-display)] uppercase tracking-wider text-[var(--text-secondary)] mb-2">
+                Collection (Optional)
+              </label>
+              <CollectionPicker
+                value={collectionId}
+                onChange={(id, name) => {
+                  setCollectionId(id);
+                  setFormData({ ...formData, collection: name || '' });
+                }}
+                ownerAddress={address}
+                chain={activeChain}
+              />
+            </div>
 
             {/* Attributes Builder */}
             <div>
@@ -348,12 +360,12 @@ export default function CreatePage() {
                 <div className="flex justify-between">
                   <span className="text-[var(--text-secondary)]">Network</span>
                   <span className="font-[family-name:var(--font-mono)]">
-                    {network === 'devnet' ? 'Solana Devnet' : 'Solana Mainnet'}
+                    {chainConfig.name} {chainConfig.testnetName}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[var(--text-secondary)]">Mint Fee</span>
-                  <span className="font-[family-name:var(--font-mono)] text-[var(--accent)]">◎ ~0.01</span>
+                  <span className="font-[family-name:var(--font-mono)] text-[var(--accent)]">~0.01 {chainConfig.currency}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[var(--text-secondary)]">Royalty</span>

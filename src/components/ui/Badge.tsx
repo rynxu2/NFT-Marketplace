@@ -10,11 +10,20 @@ interface BadgeProps {
 }
 
 const variantMap = {
-  default: 'border-[var(--border-color)] text-[var(--text-secondary)]',
-  success: 'border-[var(--color-electric-lime)]/30 text-[var(--color-electric-lime)] bg-[var(--color-electric-lime)]/5',
-  warning: 'border-[var(--color-signal-orange)]/30 text-[var(--color-signal-orange)] bg-[var(--color-signal-orange)]/5',
-  danger: 'border-[var(--color-crimson)]/30 text-[var(--color-crimson)] bg-[var(--color-crimson)]/5',
-  info: 'border-[var(--accent)]/30 text-[var(--accent)] bg-[var(--accent)]/5',
+  default:
+    'border border-slate-300 text-slate-700 bg-white/85 backdrop-blur-sm shadow-sm',
+
+  success:
+    'border border-green-500/40 text-green-700 bg-green-50/90 backdrop-blur-sm font-medium shadow-sm',
+
+  warning:
+    'border border-orange-500/45 text-orange-700 bg-orange-50/90 backdrop-blur-sm font-medium shadow-sm',
+
+  danger:
+    'border border-red-500/45 text-red-700 bg-red-50/90 backdrop-blur-sm font-medium shadow-sm',
+
+  info:
+    'border border-blue-500/45 text-blue-700 bg-blue-50/90 backdrop-blur-sm font-medium shadow-sm',
 };
 
 const sizeMap = {

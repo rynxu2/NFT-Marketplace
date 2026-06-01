@@ -78,6 +78,7 @@ export async function POST(
       from_address: auction.seller,
       to_address: auction.highest_bidder,
       price: auction.current_bid,
+      chain: auction.chain || 'solana',
     });
 
     // 4. Log auction_won activity for the winner
@@ -87,6 +88,7 @@ export async function POST(
       from_address: auction.highest_bidder,
       to_address: auction.highest_bidder,
       price: auction.current_bid,
+      chain: auction.chain || 'solana',
     });
 
     return NextResponse.json({

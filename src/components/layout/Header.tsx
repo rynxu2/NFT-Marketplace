@@ -4,17 +4,16 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Menu, X, Zap, Sun, Moon, Wallet } from 'lucide-react';
-import { useWallet } from '@solana/wallet-adapter-react';
-import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import { Search, Menu, X, Zap, Sun, Moon } from 'lucide-react';
 import { useTheme } from 'next-themes';
-import { shortenAddress, formatSOL, getNetwork } from '@/lib/solana/connection';
-import { useBalance } from '@/hooks/useBalance';
+import { getNetwork } from '@/lib/solana/connection';
 import ChainSwitcher from '@/components/layout/ChainSwitcher';
+import ChainWalletButton from '@/components/layout/ChainWalletButton';
 
 const NAV_LINKS = [
   { href: '/', label: 'HOME' },
   { href: '/explore', label: 'EXPLORE' },
+  { href: '/collections', label: 'COLLECTIONS' },
   { href: '/auctions', label: 'AUCTIONS' },
   { href: '/create', label: 'CREATE' },
   { href: '/activity', label: 'ACTIVITY' },
@@ -27,9 +26,7 @@ export default function Header() {
   const [searchQuery, setSearchQuery] = useState('');
   const [mounted, setMounted] = useState(false);
   const pathname = usePathname();
-  const { connected, publicKey } = useWallet();
   const { theme, setTheme } = useTheme();
-  const { balance } = useBalance();
   const network = getNetwork();
 
   useEffect(() => {
@@ -38,7 +35,7 @@ export default function Header() {
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-[var(--bg-primary)]/80 backdrop-blur-md border-b border-[var(--border-color)]">
-      <div className="max-w-[80rem] mx-auto px-4 sm:px-6">
+      <div className="max-w-[100rem] mx-auto px-4 sm:px-6">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2 group">
@@ -100,31 +97,9 @@ export default function Header() {
             {/* Chain Switcher */}
             <ChainSwitcher />
 
-            {/* Network Badge */}
-            <span className={`hidden sm:inline-block px-2 py-0.5 text-[9px] font-[family-name:var(--font-mono)] font-bold uppercase tracking-wider ${
-              network === 'devnet'
-                ? 'bg-[var(--color-signal-orange)]/20 text-[var(--color-signal-orange)]'
-                : 'bg-[var(--color-electric-lime)]/20 text-[var(--color-electric-lime)]'
-            }`}>
-              {network === 'devnet' ? 'TESTNET' : 'MAINNET'}
-            </span>
-
-            {/* Wallet / Profile */}
-            {connected && publicKey ? (
-              <Link
-                href={`/profile/${publicKey.toBase58()}`}
-                className="hidden sm:flex items-center gap-2 px-3 py-1.5 border border-[var(--border-color)] text-xs font-[family-name:var(--font-mono)] text-[var(--accent)] hover:border-[var(--accent)] transition-colors"
-              >
-                <div className="w-2 h-2 rounded-full bg-[var(--color-electric-lime)] animate-pulse" />
-                {balance !== null && (
-                  <span className="text-[var(--text-primary)]">◎{formatSOL(balance)}</span>
-                )}
-                <span className="text-[var(--text-secondary)]">{shortenAddress(publicKey.toBase58())}</span>
-              </Link>
-            ) : null}
-
+            {/* Wallet — single unified widget */}
             <div className="hidden sm:block">
-              <WalletMultiButton />
+              <ChainWalletButton />
             </div>
 
             {/* Mobile Menu Toggle */}
@@ -194,36 +169,15 @@ export default function Header() {
                 </Link>
               ))}
 
-              {/* Mobile wallet info */}
-              {connected && publicKey && (
-                <Link
-                  href={`/profile/${publicKey.toBase58()}`}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center gap-3 px-4 py-3 mt-2 border border-[var(--border-color)] bg-[var(--bg-primary)]"
-                >
-                  <div className="w-2 h-2 rounded-full bg-[var(--color-electric-lime)] animate-pulse" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[10px] text-[var(--text-secondary)] uppercase">Wallet</p>
-                    <p className="text-xs font-[family-name:var(--font-mono)] text-[var(--accent)] truncate">
-                      {shortenAddress(publicKey.toBase58())}
-                    </p>
-                  </div>
-                  {balance !== null && (
-                    <span className="text-xs font-[family-name:var(--font-mono)] text-[var(--text-primary)]">
-                      ◎{formatSOL(balance)}
-                    </span>
-                  )}
-                </Link>
-              )}
-
               {/* Mobile network + theme */}
               <div className="flex items-center gap-3 pt-3 mt-2 border-t border-[var(--border-color)]">
+                <ChainSwitcher />
                 <span className={`px-2 py-0.5 text-[9px] font-[family-name:var(--font-mono)] font-bold uppercase tracking-wider ${
                   network === 'devnet'
                     ? 'bg-[var(--color-signal-orange)]/20 text-[var(--color-signal-orange)]'
                     : 'bg-[var(--color-electric-lime)]/20 text-[var(--color-electric-lime)]'
                 }`}>
-                  {network === 'devnet' ? 'DEVNET' : 'MAINNET'}
+                  {network === 'devnet' ? 'TESTNET' : 'MAINNET'}
                 </span>
                 <button
                   onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
@@ -232,7 +186,7 @@ export default function Header() {
                   {mounted ? (theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />) : <Sun size={16} />}
                 </button>
                 <div className="ml-auto">
-                  <WalletMultiButton />
+                  <ChainWalletButton compact />
                 </div>
               </div>
             </nav>

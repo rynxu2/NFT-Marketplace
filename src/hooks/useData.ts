@@ -1,18 +1,19 @@
 'use client';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useChainStore } from '@/store/useChainStore';
 import type { NFT } from '@/types/nft';
 import type { Auction, Bid } from '@/types/auction';
 import type { Activity, ActivityType } from '@/types/activity';
 import type { Listing } from '@/store/useMarketplaceStore';
 
-// ─── Query Keys ─────────────────────────────────────────────
+// ─── Query Keys (chain-scoped) ──────────────────────────────
 
 export const queryKeys = {
-  nfts: (params?: Record<string, string | undefined>) => ['nfts', params] as const,
-  listings: () => ['listings'] as const,
-  auctions: () => ['auctions'] as const,
-  activities: (params?: Record<string, string | undefined>) => ['activities', params] as const,
+  nfts: (chain: string, params?: Record<string, string | undefined>) => ['nfts', chain, params] as const,
+  listings: (chain: string) => ['listings', chain] as const,
+  auctions: (chain: string) => ['auctions', chain] as const,
+  activities: (chain: string, params?: Record<string, string | undefined>) => ['activities', chain, params] as const,
 };
 
 // ─── Supabase → Client Type Mappers ────────────────────────
@@ -30,12 +31,12 @@ function mapSupabaseNFT(row: Record<string, unknown>): NFT {
     listed: (row.listed as boolean) || false,
     collection: row.collection as string | undefined,
     collectionSlug: row.collection_slug as string | undefined,
+    collectionId: row.collection_id as string | undefined,
     attributes: (row.attributes as NFT['attributes']) || [],
     createdAt: (row.created_at as string) || new Date().toISOString(),
     chain: (row.chain as NFT['chain']) || 'solana',
     tokenId: row.token_id as string | undefined,
     contractAddress: row.contract_address as string | undefined,
-    bridgeOrigin: row.bridge_origin as NFT['bridgeOrigin'],
   };
 }
 
@@ -52,6 +53,7 @@ function mapSupabaseActivity(row: Record<string, unknown>): Activity {
     timestamp: (row.created_at as string) || new Date().toISOString(),
     txSignature: row.tx_signature as string | undefined,
     collection: row.collection as string | undefined,
+    chain: (row.chain as Activity['chain']) || 'solana',
   };
 }
 
@@ -137,17 +139,20 @@ async function fetchJSON<T>(url: string): Promise<T[]> {
   return json.data || [];
 }
 
-// ─── Hooks (React Query) ────────────────────────────────────
+// ─── Hooks (React Query — chain-scoped) ─────────────────────
 
 export function useFetchNFTs(params?: { owner?: string; creator?: string; collection?: string; search?: string }) {
+  const { activeChain } = useChainStore();
+
   const query = new URLSearchParams();
+  query.set('chain', activeChain);
   if (params?.owner) query.set('owner', params.owner);
   if (params?.creator) query.set('creator', params.creator);
   if (params?.collection) query.set('collection', params.collection);
   if (params?.search) query.set('search', params.search);
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: queryKeys.nfts(params as Record<string, string | undefined>),
+    queryKey: queryKeys.nfts(activeChain, params as Record<string, string | undefined>),
     queryFn: () => fetchJSON<Record<string, unknown>>(`/api/nfts?${query.toString()}`).then(rows => rows.map(mapSupabaseNFT)),
   });
 
@@ -155,18 +160,22 @@ export function useFetchNFTs(params?: { owner?: string; creator?: string; collec
 }
 
 export function useFetchListings() {
+  const { activeChain } = useChainStore();
+
   const { data, isLoading, refetch } = useQuery({
-    queryKey: queryKeys.listings(),
-    queryFn: () => fetchJSON<Record<string, unknown>>('/api/listings').then(rows => rows.map(mapSupabaseListing)),
+    queryKey: queryKeys.listings(activeChain),
+    queryFn: () => fetchJSON<Record<string, unknown>>(`/api/listings?chain=${activeChain}`).then(rows => rows.map(mapSupabaseListing)),
   });
 
   return { listings: data || [], loading: isLoading, refresh: refetch };
 }
 
 export function useFetchAuctions(options?: { pollingInterval?: number }) {
+  const { activeChain } = useChainStore();
+
   const { data, isLoading, refetch } = useQuery({
-    queryKey: queryKeys.auctions(),
-    queryFn: () => fetchJSON<Record<string, unknown>>('/api/auctions').then(rows => rows.map(mapSupabaseAuction)),
+    queryKey: queryKeys.auctions(activeChain),
+    queryFn: () => fetchJSON<Record<string, unknown>>(`/api/auctions?chain=${activeChain}`).then(rows => rows.map(mapSupabaseAuction)),
     refetchInterval: options?.pollingInterval,
   });
 
@@ -174,13 +183,16 @@ export function useFetchAuctions(options?: { pollingInterval?: number }) {
 }
 
 export function useFetchActivities(params?: { type?: string; nftMint?: string; limit?: number }) {
+  const { activeChain } = useChainStore();
+
   const query = new URLSearchParams();
+  query.set('chain', activeChain);
   if (params?.type) query.set('type', params.type);
   if (params?.nftMint) query.set('nft_mint', params.nftMint);
   if (params?.limit) query.set('limit', String(params.limit));
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: queryKeys.activities(params as Record<string, string | undefined>),
+    queryKey: queryKeys.activities(activeChain, params as Record<string, string | undefined>),
     queryFn: () => fetchJSON<Record<string, unknown>>(`/api/activities?${query.toString()}`).then(rows => rows.map(mapSupabaseActivity)),
   });
 
@@ -202,6 +214,8 @@ export function useInvalidateQueries() {
       queryClient.invalidateQueries({ queryKey: ['listings'] });
       queryClient.invalidateQueries({ queryKey: ['auctions'] });
       queryClient.invalidateQueries({ queryKey: ['activities'] });
+      queryClient.invalidateQueries({ queryKey: ['collections'] });
+      queryClient.invalidateQueries({ queryKey: ['collection'] });
     },
     invalidateNFTs: () => queryClient.invalidateQueries({ queryKey: ['nfts'] }),
     invalidateListings: () => queryClient.invalidateQueries({ queryKey: ['listings'] }),

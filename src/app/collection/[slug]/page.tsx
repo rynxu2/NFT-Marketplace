@@ -1,46 +1,72 @@
 'use client';
 
-import React, { use, useMemo } from 'react';
-import Image from 'next/image';
-import { motion } from 'framer-motion';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import React, { use, useState } from 'react';
 import Link from 'next/link';
+import { useQuery } from '@tanstack/react-query';
+import { Loader2, ArrowLeft } from 'lucide-react';
+import { useFetchCollection } from '@/hooks/useCollections';
+import { useChainStore } from '@/store/useChainStore';
+import { useChainWallet } from '@/hooks/useChainWallet';
+import CollectionBanner from '@/components/collections/CollectionBanner';
 import NFTGrid from '@/components/nft/NFTGrid';
 import EmptyState from '@/components/ui/EmptyState';
-import { formatSOL, shortenAddress } from '@/lib/solana/connection';
-import { useFetchNFTs } from '@/hooks/useData';
+import type { NFT } from '@/types/nft';
+import { useBuyCollection } from '@/hooks/useBuyCollection';
+import { useSellCollection } from '@/hooks/useSellCollection';
+import SellCollectionModal from '@/components/collections/SellCollectionModal';
+import BuyCollectionModal from '@/components/collections/BuyCollectionModal';
+
+function mapNFT(row: Record<string, unknown>): NFT {
+  return {
+    mint: row.mint as string,
+    name: row.name as string,
+    symbol: (row.symbol as string) || 'CYBER',
+    description: (row.description as string) || '',
+    image: row.image as string,
+    owner: row.owner as string,
+    creator: row.creator as string,
+    price: row.price as number | undefined,
+    listed: (row.listed as boolean) || false,
+    collection: row.collection as string | undefined,
+    collectionSlug: row.collection_slug as string | undefined,
+    collectionId: row.collection_id as string | undefined,
+    attributes: (row.attributes as NFT['attributes']) || [],
+    createdAt: (row.created_at as string) || new Date().toISOString(),
+    chain: (row.chain as NFT['chain']) || 'solana',
+    tokenId: row.token_id as string | undefined,
+    contractAddress: row.contract_address as string | undefined,
+  };
+}
 
 export default function CollectionPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
-  const { nfts: allNFTs, loading } = useFetchNFTs();
+  const { address } = useChainWallet();
+  const { collection, loading: loadingCollection } = useFetchCollection(slug);
+  const { activeChain } = useChainStore();
 
-  // Derive collection data from NFTs
-  const collectionNFTs = useMemo(() => {
-    return allNFTs.filter((n) => n.collectionSlug === slug);
-  }, [allNFTs, slug]);
+  // Fetch NFTs by collection_id, filtered by current chain
+  const { data: collectionNFTs = [], isLoading: loadingNFTs } = useQuery({
+    queryKey: ['collection-nfts', collection?.id, activeChain],
+    queryFn: async () => {
+      if (!collection?.id) return [];
+      const res = await fetch(`/api/nfts?collection_id=${collection.id}&chain=${activeChain}`);
+      if (!res.ok) return [];
+      const json = await res.json();
+      return ((json.data || []) as Record<string, unknown>[]).map(mapNFT);
+    },
+    enabled: !!collection?.id,
+  });
 
-  const collection = useMemo(() => {
-    if (collectionNFTs.length === 0) return null;
-    const first = collectionNFTs[0];
-    const prices = collectionNFTs.filter((n) => n.price).map((n) => n.price!);
-    return {
-      name: first.collection || slug,
-      creator: first.creator,
-      description: `A collection of ${collectionNFTs.length} NFTs on the NEXUS marketplace.`,
-      image: first.image,
-      stats: {
-        floorPrice: prices.length > 0 ? Math.min(...prices) : 0,
-        totalVolume: prices.reduce((sum, p) => sum + p, 0),
-        items: collectionNFTs.length,
-        owners: new Set(collectionNFTs.map((n) => n.owner)).size,
-        listed: collectionNFTs.filter((n) => n.listed).length,
-      },
-    };
-  }, [collectionNFTs, slug]);
+  const isOwner = !!(address && collection?.owner === address);
+  const [showSellModal, setShowSellModal] = useState(false);
+  const [showBuyModal, setShowBuyModal] = useState(false);
+  const { buyCollection, step: buyStep } = useBuyCollection();
+  const { sellCollection, cancelSale, loading: sellLoading } = useSellCollection();
+  const loading = loadingCollection || loadingNFTs;
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
+      <div className="flex items-center justify-center py-32">
         <Loader2 size={24} className="animate-spin text-[var(--accent)]" />
       </div>
     );
@@ -48,91 +74,79 @@ export default function CollectionPage({ params }: { params: Promise<{ slug: str
 
   if (!collection) {
     return (
-      <div className="max-w-[80rem] mx-auto px-4 sm:px-6 py-10">
-        <Link href="/explore" className="inline-flex items-center gap-2 text-sm text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors mb-4">
-          <ArrowLeft size={16} />
-          Back
+      <div className="max-w-[80rem] mx-auto px-4 py-20 text-center">
+        <Link href="/collections" className="inline-flex items-center gap-2 text-sm text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors mb-4">
+          <ArrowLeft size={14} /> Collections
         </Link>
         <EmptyState variant="collection" />
       </div>
     );
   }
 
-  const statItems = [
-    { label: 'Floor Price', value: collection.stats.floorPrice > 0 ? `◎ ${collection.stats.floorPrice}` : '—' },
-    { label: 'Total Volume', value: `◎ ${formatSOL(collection.stats.totalVolume)}` },
-    { label: 'Items', value: collection.stats.items.toString() },
-    { label: 'Owners', value: collection.stats.owners.toString() },
-    { label: 'Listed', value: `${collection.stats.listed}` },
-  ];
-
   return (
-    <div>
-      {/* Banner */}
-      <div className="relative h-48 sm:h-64">
-        <Image
-          src={collection.image}
-          alt={collection.name}
-          fill
-          sizes="100vw"
-          className="object-cover"
-          priority
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-primary)] via-[var(--bg-primary)]/50 to-transparent" />
-      </div>
+    <div className="max-w-[80rem] mx-auto px-4 sm:px-6 py-6">
+      {/* Back link */}
+      <Link
+        href="/collections"
+        className="inline-flex items-center gap-2 text-sm text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors mb-4"
+      >
+        <ArrowLeft size={14} /> Collections
+      </Link>
 
-      <div className="max-w-[80rem] mx-auto px-4 sm:px-6">
-        {/* Collection Info */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="-mt-16 relative z-10 mb-8"
-        >
-          <Link href="/explore" className="inline-flex items-center gap-2 text-sm text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors mb-4">
-            <ArrowLeft size={16} />
-            Back
-          </Link>
+      {/* Banner with full metadata */}
+      <CollectionBanner
+        collection={collection}
+        isOwner={isOwner}
+        onSellClick={() => setShowSellModal(true)}
+        onBuyClick={() => setShowBuyModal(true)}
+        onCancelSaleClick={() => cancelSale(collection)}
+      />
 
-          <div className="flex items-end gap-4 mb-4">
-            <div className="w-24 h-24 border-2 border-[var(--bg-primary)] bg-[var(--bg-secondary)] overflow-hidden shrink-0">
-              <Image
-                src={collection.image}
-                alt={collection.name}
-                width={96}
-                height={96}
-                className="object-cover"
-              />
-            </div>
-            <div>
-              <h1 className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-bold">
-                {collection.name}
-              </h1>
-              <p className="text-xs font-[family-name:var(--font-mono)] text-[var(--text-secondary)]">
-                by {shortenAddress(collection.creator)}
-              </p>
-            </div>
-          </div>
-
-          <p className="text-sm text-[var(--text-secondary)] max-w-[42rem] leading-relaxed mb-6">
-            {collection.description}
-          </p>
-
-          {/* Stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            {statItems.map((s) => (
-              <div key={s.label} className="bg-[var(--bg-secondary)] border border-[var(--border-color)] p-3 text-center">
-                <p className="font-[family-name:var(--font-mono)] text-sm font-bold">{s.value}</p>
-                <p className="text-[9px] text-[var(--text-secondary)] uppercase tracking-wider mt-0.5">{s.label}</p>
-              </div>
-            ))}
-          </div>
-        </motion.div>
-
-        {/* NFTs */}
-        <div className="py-8">
-          <NFTGrid nfts={collectionNFTs} emptyMessage="No NFTs in this collection" />
+      {/* NFT Grid */}
+      <div className="mt-8">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xs font-[family-name:var(--font-display)] uppercase tracking-wider text-[var(--text-secondary)]">
+            Items ({collectionNFTs.length})
+          </h2>
         </div>
+
+        {collectionNFTs.length === 0 ? (
+          <div className="py-16 text-center border border-[var(--border-color)] bg-[var(--bg-secondary)]">
+            <p className="text-sm text-[var(--text-secondary)]">No items in this collection yet.</p>
+            {isOwner && (
+              <Link
+                href={`/collection/${slug}/manage`}
+                className="inline-block mt-3 text-xs text-[var(--accent)] hover:underline"
+              >
+                Add NFTs →
+              </Link>
+            )}
+          </div>
+        ) : (
+          <NFTGrid nfts={collectionNFTs} />
+        )}
       </div>
+
+      {/* Sale modals */}
+      {collection && (
+        <>
+          <SellCollectionModal
+            isOpen={showSellModal}
+            onClose={() => setShowSellModal(false)}
+            collection={collection}
+            onSell={(price) => sellCollection(collection, price)}
+            loading={sellLoading}
+          />
+          <BuyCollectionModal
+            isOpen={showBuyModal}
+            onClose={() => setShowBuyModal(false)}
+            collection={collection}
+            onBuy={() => buyCollection(collection)}
+            step={buyStep}
+          />
+        </>
+      )}
     </div>
   );
 }
+

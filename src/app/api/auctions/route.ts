@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const chain = searchParams.get('chain');
+
     const { data, error } = await supabase
       .from('auctions')
       .select('*')
-      .in('status', ['active', 'ended'])
       .order('start_time', { ascending: false });
 
     if (error) {
@@ -36,7 +38,12 @@ export async function GET() {
       })
     );
 
-    return NextResponse.json({ data: enriched });
+    // Chain filter — only return auctions whose NFT matches the chain
+    const filtered = chain
+      ? enriched.filter((a) => a.nft?.chain === chain)
+      : enriched;
+
+    return NextResponse.json({ data: filtered });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to fetch auctions';
     return NextResponse.json({ error: message }, { status: 500 });
@@ -64,15 +71,19 @@ export async function POST(request: NextRequest) {
     }
 
     // Guard: check if NFT already has an active auction
-    const { data: activeAuction } = await supabase
+    const { data: activeAuctions } = await supabase
       .from('auctions')
-      .select('id')
+      .select('id, end_time, highest_bidder, status')
       .eq('nft_mint', body.nft_mint)
-      .in('status', ['active', 'ended'])
-      .limit(1)
-      .maybeSingle();
+      .in('status', ['active', 'ended']);
 
-    if (activeAuction) {
+    const hasRealActiveAuction = (activeAuctions || []).some((auc) => {
+      const isExpired = new Date(auc.end_time).getTime() <= Date.now();
+      const hasBids = !!auc.highest_bidder;
+      return !isExpired || hasBids;
+    });
+
+    if (hasRealActiveAuction) {
       return NextResponse.json(
         { error: 'NFT already has an active auction.' },
         { status: 409 }
@@ -91,6 +102,7 @@ export async function POST(request: NextRequest) {
         min_bid_increment: body.min_bid_increment || 0.5,
         end_time: endTime,
         tx_signature: body.tx_signature || null,
+        chain: body.chain || 'solana',
       })
       .select()
       .single();
@@ -108,6 +120,7 @@ export async function POST(request: NextRequest) {
       from_address: body.seller,
       price: body.starting_price,
       tx_signature: body.tx_signature || null,
+      chain: body.chain || 'solana',
     });
 
     return NextResponse.json({ data });

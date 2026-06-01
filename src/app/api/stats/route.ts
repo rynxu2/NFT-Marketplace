@@ -1,16 +1,31 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    // Fetch all activities for aggregation
-    const { data: activities } = await supabase
-      .from('activities')
-      .select('type, price, from_address, to_address, nft_mint, created_at')
-      .order('created_at', { ascending: false });
+    const { searchParams } = new URL(request.url);
+    const chain = searchParams.get('chain');
 
-    const { data: nfts } = await supabase.from('nfts').select('mint, collection, owner, creator, listed, price');
-    const { data: auctions } = await supabase.from('auctions').select('nft_mint, current_bid, status');
+    // Fetch activities for aggregation
+    let activitiesQuery = supabase
+      .from('activities')
+      .select('type, price, from_address, to_address, nft_mint, created_at, chain');
+    if (chain) {
+      activitiesQuery = activitiesQuery.eq('chain', chain);
+    }
+    const { data: activities } = await activitiesQuery.order('created_at', { ascending: false });
+
+    let nftsQuery = supabase.from('nfts').select('mint, collection, owner, creator, listed, price, chain');
+    if (chain) {
+      nftsQuery = nftsQuery.eq('chain', chain);
+    }
+    const { data: nfts } = await nftsQuery;
+
+    let auctionsQuery = supabase.from('auctions').select('nft_mint, current_bid, status, chain');
+    if (chain) {
+      auctionsQuery = auctionsQuery.eq('chain', chain);
+    }
+    const { data: auctions } = await auctionsQuery;
 
     const allActivities = activities || [];
     const allNFTs = nfts || [];

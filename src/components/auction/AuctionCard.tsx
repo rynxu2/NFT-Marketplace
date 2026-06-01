@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Gavel } from 'lucide-react';
 import type { Auction } from '@/types/auction';
-import { formatSOL } from '@/lib/solana/connection';
+import { formatChainCurrency } from '@/types/chain';
 import Countdown from './Countdown';
 import Badge from '@/components/ui/Badge';
 
@@ -55,7 +55,7 @@ export default function AuctionCard({ auction, index = 0 }: AuctionCardProps) {
                   <div>
                     <p className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider">Current Bid</p>
                     <p className="text-lg font-[family-name:var(--font-mono)] font-bold text-[var(--color-signal-orange)]">
-                      ◎ {formatSOL(auction.currentBid)}
+                      {formatChainCurrency(auction.currentBid, auction.nft?.chain || 'solana')}
                     </p>
                   </div>
                   <div>

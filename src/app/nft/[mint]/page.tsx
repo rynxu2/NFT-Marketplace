@@ -6,17 +6,18 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { ArrowLeft, ExternalLink, Heart, Share2, ShoppingCart, Tag, DollarSign, Loader2, Gavel, Clock, Send, Check, Copy, Zap } from 'lucide-react';
 import { useWallet } from '@solana/wallet-adapter-react';
+import { useAccount } from 'wagmi';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Input from '@/components/ui/Input';
 import EmptyState from '@/components/ui/EmptyState';
 import NFTCard from '@/components/nft/NFTCard';
 import TransferModal from '@/components/nft/TransferModal';
-import BridgeModal from '@/components/nft/BridgeModal';
 import PriceChart from '@/components/nft/PriceChart';
-import { formatSOL, shortenAddress, timeAgo, getExplorerUrl } from '@/lib/solana/connection';
-import { CHAIN_CONFIGS } from '@/types/chain';
-import { SOL_PRICE_USD } from '@/lib/constants';
+import { shortenAddress, timeAgo } from '@/lib/solana/connection';
+import { CHAIN_CONFIGS, formatChainCurrency, getChainExplorerUrl } from '@/types/chain';
+import { useChainStore } from '@/store/useChainStore';
+import { getChainPriceUSD } from '@/lib/constants';
 import { useListNFT, useBuyNFT, useCancelListing } from '@/hooks/useMarketplace';
 import { useCreateAuction } from '@/hooks/useAuction';
 import { useMakeOffer, useRespondOffer } from '@/hooks/useOffer';
@@ -28,6 +29,7 @@ import type { Offer } from '@/types/offer';
 export default function NFTDetailPage({ params }: { params: Promise<{ mint: string }> }) {
   const { mint } = use(params);
   const { publicKey } = useWallet();
+  const { address: evmAddress } = useAccount();
   const { list } = useListNFT();
   const { buy } = useBuyNFT();
   const { create: createAuction } = useCreateAuction();
@@ -35,6 +37,7 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
   const { makeOffer } = useMakeOffer();
   const { respond: respondOffer } = useRespondOffer();
   const { isFavorited, toggleFavorite } = useFavorites();
+  const { activeChain } = useChainStore();
 
   const { nfts: allNFTs, loading: nftsLoading } = useFetchNFTs();
   const { listings: allListings } = useFetchListings();
@@ -44,7 +47,6 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
   const [showListForm, setShowListForm] = useState(false);
   const [showAuctionForm, setShowAuctionForm] = useState(false);
   const [showTransfer, setShowTransfer] = useState(false);
-  const [showBridge, setShowBridge] = useState(false);
   const [listPrice, setListPrice] = useState('');
   const [auctionPrice, setAuctionPrice] = useState('');
   const [auctionDuration, setAuctionDuration] = useState('30');
@@ -79,14 +81,23 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
   const listing = allListings.find((l) => l.mint === mint);
   const isListed = !!listing || !!nft?.listed;
 
+  const [currentTime] = useState(() => Date.now());
+
   // Check if NFT has an active auction
   const activeAuction = allAuctions.find(
-    (a) => a.nft?.mint === mint && (a.status === 'active' || (a.status !== 'settled' && new Date(a.endTime).getTime() > Date.now()))
+    (a) =>
+      a.nft?.mint === mint &&
+      a.status !== 'settled' &&
+      (new Date(a.endTime).getTime() > currentTime || !!a.highestBidder)
   );
   const hasActiveAuction = !!activeAuction;
 
-  // Check if current user is the owner
-  const isOwner = publicKey && nft?.owner === publicKey.toBase58();
+  // Check if current user is the owner (works for both Solana and EVM wallets)
+  const solanaAddress = publicKey?.toBase58();
+  const isOwner = !!(nft?.owner && (
+    (solanaAddress && nft.owner === solanaAddress) ||
+    (evmAddress && nft.owner.toLowerCase() === evmAddress.toLowerCase())
+  ));
 
   // Related NFTs from same collection
   const relatedNFTs = nft?.collection
@@ -148,7 +159,7 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
 
   const handleRespondOffer = async (offerId: string, action: 'accept' | 'reject', amount?: number) => {
     setProcessing(true);
-    await respondOffer(offerId, action, amount);
+    await respondOffer(offerId, action, amount, nft);
     setProcessing(false);
   };
 
@@ -295,10 +306,10 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
               <p className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider mb-2">Current Price</p>
               <div className="flex items-baseline gap-3 mb-4">
                 <span className="font-[family-name:var(--font-mono)] text-3xl font-bold text-[var(--accent)]">
-                  ◎ {formatSOL(displayPrice)}
+                  {formatChainCurrency(displayPrice, nft.chain || activeChain)}
                 </span>
                 <span className="text-sm text-[var(--text-secondary)]">
-                  ≈ ${(displayPrice * SOL_PRICE_USD).toFixed(2)}
+                  ≈ ${(displayPrice * getChainPriceUSD(nft.chain || activeChain)).toFixed(2)}
                 </span>
               </div>
               <Button size="lg" className="w-full" onClick={handleBuy} loading={processing} disabled={processing}>
@@ -313,7 +324,7 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
           )}
 
           {/* Make Offer (for non-owners) */}
-          {!isOwner && publicKey && (
+          {!isOwner && (publicKey || evmAddress) && (
             <div className="mb-6">
               {showOfferForm ? (
                 <div className="bg-[var(--bg-secondary)] border border-[var(--color-signal-orange)]/20 p-6">
@@ -321,7 +332,7 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
                     Make an Offer
                   </h3>
                   <Input
-                    label="Offer Amount (SOL)"
+                    label={`Offer Amount (${CHAIN_CONFIGS[activeChain].symbol})`}
                     type="number"
                     placeholder="e.g., 1.0"
                     value={offerAmount}
@@ -372,7 +383,7 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
                       VIEW AUCTION
                     </Button>
                   </Link>
-                  <Button size="md" variant="ghost" className="w-full mt-2" onClick={() => setShowTransfer(true)}>
+                  <Button size="md" variant="cyber-cyan" className="w-full mt-2" onClick={() => setShowTransfer(true)}>
                     <Send size={14} />
                     TRANSFER NFT
                   </Button>
@@ -383,7 +394,7 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
                     Listed for
                   </p>
                   <p className="font-[family-name:var(--font-mono)] text-2xl font-bold text-[var(--accent)] mb-4">
-                    ◎ {formatSOL(listing!.price)}
+                    {formatChainCurrency(displayPrice || 0, nft.chain || activeChain)}
                   </p>
                   <Button
                     variant="secondary"
@@ -398,7 +409,7 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
               ) : showListForm ? (
                 <div className="bg-[var(--bg-secondary)] border border-[var(--accent)]/20 p-6 space-y-4">
                   <Input
-                    label="Set Price (SOL)"
+                    label={`Set Price (${CHAIN_CONFIGS[activeChain].symbol})`}
                     type="number"
                     placeholder="e.g., 2.5"
                     value={listPrice}
@@ -418,7 +429,7 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
                 <div className="bg-[var(--bg-secondary)] border border-[var(--color-signal-orange)]/20 p-6 space-y-4">
                   <h4 className="text-xs font-[family-name:var(--font-display)] uppercase tracking-wider text-[var(--color-signal-orange)] mb-1">Create Auction</h4>
                   <Input
-                    label="Starting Price (SOL)"
+                    label={`Starting Price (${CHAIN_CONFIGS[activeChain].symbol})`}
                     type="number"
                     placeholder="e.g., 1.0"
                     value={auctionPrice}
@@ -433,7 +444,7 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
                       onChange={(e) => setAuctionDuration(e.target.value)}
                     />
                     <Input
-                      label="Min Increment (SOL)"
+                      label={`Min Increment (${CHAIN_CONFIGS[activeChain].symbol})`}
                       type="number"
                       placeholder="0.5"
                       value={auctionIncrement}
@@ -462,14 +473,10 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
                       CREATE AUCTION
                     </Button>
                   </div>
-                  <div className="flex gap-2 mt-2">
-                    <Button size="md" variant="ghost" className="flex-1" onClick={() => setShowTransfer(true)}>
+                  <div className="mt-2">
+                    <Button size="md" variant="cyber-cyan" className="w-full" onClick={() => setShowTransfer(true)}>
                       <Send size={14} />
                       TRANSFER
-                    </Button>
-                    <Button size="md" variant="ghost" className="flex-1" onClick={() => setShowBridge(true)}>
-                      <Zap size={14} />
-                      BRIDGE
                     </Button>
                   </div>
                 </>
@@ -535,12 +542,12 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
                     </div>
                     <div className="text-right">
                       {act.price && (
-                        <p className="text-xs font-[family-name:var(--font-mono)] font-semibold">◎ {act.price}</p>
+                        <p className="text-xs font-[family-name:var(--font-mono)] font-semibold">{formatChainCurrency(act.price, nft.chain || activeChain)}</p>
                       )}
                       <p className="text-[10px] text-[var(--text-secondary)]">{timeAgo(act.timestamp)}</p>
                       {act.txSignature && !act.txSignature.startsWith('list_') && !act.txSignature.startsWith('cancel_') && (
                         <a
-                          href={getExplorerUrl(act.txSignature)}
+                          href={getChainExplorerUrl(nft.chain || activeChain, act.txSignature, 'tx')}
                           target="_blank"
                           rel="noreferrer"
                           className="text-[8px] text-[var(--accent)] hover:underline inline-flex items-center gap-0.5"
@@ -570,7 +577,7 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
                   <div key={offer.id} className="px-4 py-3 flex items-center justify-between">
                     <div>
                       <p className="text-sm font-[family-name:var(--font-mono)] font-bold text-[var(--color-signal-orange)]">
-                        ◎ {formatSOL(offer.amount)}
+                        {formatChainCurrency(offer.amount, nft.chain || activeChain)}
                       </p>
                       <p className="text-[10px] text-[var(--text-secondary)] mt-0.5">
                         by {shortenAddress(offer.bidder)}
@@ -623,7 +630,7 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
             <>
               <div className="flex-1">
                 <p className="text-[10px] text-[var(--text-secondary)] uppercase">Price</p>
-                <p className="text-sm font-[family-name:var(--font-mono)] font-bold text-[var(--accent)]">◎ {formatSOL(displayPrice)}</p>
+                <p className="text-sm font-[family-name:var(--font-mono)] font-bold text-[var(--accent)]">{formatChainCurrency(displayPrice, nft.chain || activeChain)}</p>
               </div>
               <Button size="md" onClick={handleBuy} loading={processing} disabled={processing}>
                 <ShoppingCart size={14} />
@@ -661,14 +668,7 @@ export default function NFTDetailPage({ params }: { params: Promise<{ mint: stri
         />
       )}
 
-      {/* Bridge Modal */}
-      {nft && (
-        <BridgeModal
-          nft={nft}
-          isOpen={showBridge}
-          onClose={() => setShowBridge(false)}
-        />
-      )}
+
     </div>
   );
 }

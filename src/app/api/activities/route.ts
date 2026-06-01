@@ -4,9 +4,10 @@ import { supabase } from '@/lib/supabase';
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get('limit') || '50');
+    const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100);
     const type = searchParams.get('type');
     const nftMint = searchParams.get('nft_mint');
+    const chain = searchParams.get('chain');
 
     let query = supabase
       .from('activities')
@@ -16,6 +17,7 @@ export async function GET(request: NextRequest) {
 
     if (type) query = query.eq('type', type);
     if (nftMint) query = query.eq('nft_mint', nftMint);
+    if (chain) query = query.eq('chain', chain);
 
     const { data, error } = await query;
 
@@ -46,6 +48,7 @@ export async function POST(request: NextRequest) {
         price: body.price || null,
         tx_signature: body.tx_signature || null,
         collection: body.collection || null,
+        chain: body.chain || 'solana',
       })
       .select()
       .single();

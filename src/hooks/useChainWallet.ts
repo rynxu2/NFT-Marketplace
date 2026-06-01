@@ -1,9 +1,10 @@
 'use client';
 
 import { useMemo } from 'react';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { useAccount, useBalance as useWagmiBalance } from 'wagmi';
 import { useChainStore } from '@/store/useChainStore';
+import { useBalance as useSolanaBalance } from '@/hooks/useBalance';
 import { weiToEth } from '@/lib/polygon/connection';
 
 export interface UnifiedWallet {
@@ -21,6 +22,7 @@ export interface UnifiedWallet {
 export function useChainWallet(): UnifiedWallet {
   const { activeChain } = useChainStore();
   const solanaWallet = useWallet();
+  const { balance: solanaBalance } = useSolanaBalance();
   const { address: evmAddress, isConnected: evmConnected } = useAccount();
   const { data: evmBalance } = useWagmiBalance({ address: evmAddress });
 
@@ -38,7 +40,7 @@ export function useChainWallet(): UnifiedWallet {
       address: solanaWallet.publicKey?.toBase58() || null,
       connected: solanaWallet.connected,
       chain: 'solana' as const,
-      balance: null, // handled by existing useBalance hook
+      balance: solanaBalance,
     };
-  }, [activeChain, solanaWallet.publicKey, solanaWallet.connected, evmAddress, evmConnected, evmBalance]);
+  }, [activeChain, solanaWallet.publicKey, solanaWallet.connected, solanaBalance, evmAddress, evmConnected, evmBalance]);
 }

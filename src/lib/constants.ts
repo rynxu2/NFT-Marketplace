@@ -1,6 +1,13 @@
+import type { ChainId } from '@/types/chain';
+
 export const MARKETPLACE_NAME = 'NEXUS';
-export const MARKETPLACE_DESCRIPTION = 'The Futuristic NFT Marketplace on Solana';
+export const MARKETPLACE_DESCRIPTION = 'The Futuristic Multi-Chain NFT Marketplace';
 export const SOL_PRICE_USD = 170;
+export const POL_PRICE_USD = 0.25;
+
+export function getChainPriceUSD(chain: ChainId): number {
+  return chain === 'polygon' ? POL_PRICE_USD : SOL_PRICE_USD;
+}
 
 export const CATEGORIES = [
   'All',

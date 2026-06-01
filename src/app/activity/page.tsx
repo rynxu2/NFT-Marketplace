@@ -7,7 +7,8 @@ import { motion } from 'framer-motion';
 import { ArrowUpRight, ArrowDownLeft, Gavel, Tag, Repeat, Sparkles, XCircle, Trophy, Activity as ActivityIcon, Loader2 } from 'lucide-react';
 import Badge from '@/components/ui/Badge';
 import EmptyState from '@/components/ui/EmptyState';
-import { shortenAddress, timeAgo, formatSOL } from '@/lib/solana/connection';
+import { shortenAddress, timeAgo } from '@/lib/solana/connection';
+import { formatChainCurrency } from '@/types/chain';
 import { useFetchActivities } from '@/hooks/useData';
 import type { ActivityType } from '@/types/activity';
 
@@ -138,7 +139,7 @@ export default function ActivityPage() {
                   <div className="sm:col-span-2">
                     {act.price ? (
                       <p className="text-xs font-[family-name:var(--font-mono)] font-semibold">
-                        ◎ {formatSOL(act.price)}
+                        {formatChainCurrency(act.price, act.chain || 'solana')}
                       </p>
                     ) : (
                       <p className="text-xs text-[var(--text-secondary)]">—</p>

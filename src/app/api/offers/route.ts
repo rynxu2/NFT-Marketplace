@@ -67,7 +67,11 @@ export async function POST(request: NextRequest) {
       // Update existing offer amount
       const { data, error } = await supabase
         .from('offers')
-        .update({ amount: body.amount, expires_at: body.expires_at })
+        .update({
+          amount: body.amount,
+          expires_at: body.expires_at,
+          escrow_offer_id: body.escrow_offer_id,
+        })
         .eq('id', existing.id)
         .select()
         .single();
@@ -83,6 +87,8 @@ export async function POST(request: NextRequest) {
         nft_mint: body.nft_mint,
         bidder: body.bidder,
         amount: body.amount,
+        chain: body.chain || 'solana',
+        escrow_offer_id: body.escrow_offer_id || null,
         expires_at: body.expires_at || new Date(Date.now() + 7 * 24 * 3600000).toISOString(),
       })
       .select()
@@ -100,6 +106,8 @@ export async function POST(request: NextRequest) {
       nft_image: body.nft_image || '',
       from_address: body.bidder,
       price: body.amount,
+      chain: body.chain || 'solana',
+      tx_signature: body.tx_signature || null,
     });
 
     return NextResponse.json({ data });

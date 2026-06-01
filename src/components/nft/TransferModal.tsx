@@ -1,14 +1,19 @@
 'use client';
 
 import React, { useState, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Send, Loader2, AlertTriangle } from 'lucide-react';
 import { useWallet } from '@solana/wallet-adapter-react';
+import { useAccount } from 'wagmi';
 import { PublicKey } from '@solana/web3.js';
+import { isAddress as isEvmAddress } from 'viem';
 import { transferNFT } from '@/lib/solana/marketplace';
+import { transferNFTPolygon } from '@/lib/polygon/marketplace';
 import { apiUpdateNFT, apiCreateActivity } from '@/lib/api';
 import { useToastStore } from '@/store/useToastStore';
 import { useInvalidateQueries } from '@/hooks/useData';
+import { CHAIN_CONFIGS } from '@/types/chain';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import type { NFT } from '@/types/nft';
@@ -19,38 +24,68 @@ interface TransferModalProps {
   onClose: () => void;
 }
 
+function isValidSolanaAddress(addr: string): boolean {
+  try {
+    new PublicKey(addr);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export default function TransferModal({ nft, isOpen, onClose }: TransferModalProps) {
   const wallet = useWallet();
+  const { address: evmAddress } = useAccount();
   const { addToast } = useToastStore();
   const { invalidateAll } = useInvalidateQueries();
   const [recipient, setRecipient] = useState('');
   const [processing, setProcessing] = useState(false);
   const [step, setStep] = useState<'input' | 'confirm' | 'success'>('input');
 
+  const isPolygon = nft.chain === 'polygon';
+  const chainConfig = CHAIN_CONFIGS[nft.chain];
+
   const isValidAddress = useMemo(() => {
     if (!recipient) return false;
-    try {
-      new PublicKey(recipient);
-      return true;
-    } catch {
-      return false;
-    }
-  }, [recipient]);
+    return isPolygon ? isEvmAddress(recipient) : isValidSolanaAddress(recipient);
+  }, [recipient, isPolygon]);
+
+  const currentAddress = isPolygon
+    ? evmAddress?.toLowerCase()
+    : wallet.publicKey?.toBase58();
 
   const isSelf = useMemo(() => {
-    return wallet.publicKey?.toBase58() === recipient;
-  }, [wallet.publicKey, recipient]);
+    if (!currentAddress || !recipient) return false;
+    return isPolygon
+      ? recipient.toLowerCase() === currentAddress
+      : recipient === currentAddress;
+  }, [currentAddress, recipient, isPolygon]);
 
   const handleTransfer = useCallback(async () => {
-    if (!wallet.publicKey || !isValidAddress || isSelf) return;
+    if (!isValidAddress || isSelf) return;
 
     setProcessing(true);
     try {
-      const result = await transferNFT({
-        wallet,
-        mintAddress: nft.mint,
-        recipientAddress: recipient,
-      });
+      let txSignature = '';
+
+      if (isPolygon) {
+        // Polygon ERC-721 transfer
+        if (!evmAddress) throw new Error('Connect MetaMask first');
+        if (!nft.tokenId) throw new Error('NFT has no token ID on Polygon');
+
+        const result = await transferNFTPolygon(evmAddress, recipient, nft.tokenId);
+        txSignature = result.txHash;
+      } else {
+        // Solana SPL token transfer
+        if (!wallet.publicKey) throw new Error('Connect Solana wallet first');
+
+        const result = await transferNFT({
+          wallet,
+          mintAddress: nft.mint,
+          recipientAddress: recipient,
+        });
+        txSignature = result.txSignature;
+      }
 
       // Update database
       try {
@@ -65,15 +100,17 @@ export default function TransferModal({ nft, isOpen, onClose }: TransferModalPro
       }
 
       // Log activity
+      const fromAddr = isPolygon ? evmAddress! : wallet.publicKey!.toBase58();
       try {
         await apiCreateActivity({
           type: 'transfer',
           nft_mint: nft.mint,
           nft_name: nft.name,
           nft_image: nft.image,
-          from_address: wallet.publicKey.toBase58(),
+          from_address: fromAddr,
           to_address: recipient,
-          tx_signature: result.txSignature,
+          tx_signature: txSignature,
+          chain: nft.chain,
         });
       } catch (dbErr) {
         console.error('Failed to log transfer activity:', dbErr);
@@ -81,14 +118,14 @@ export default function TransferModal({ nft, isOpen, onClose }: TransferModalPro
 
       invalidateAll();
       setStep('success');
-      addToast(`"${nft.name}" transferred successfully!`, 'success', result.txSignature);
+      addToast(`"${nft.name}" transferred successfully!`, 'success', txSignature);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Transfer failed';
       addToast(msg, 'error');
     } finally {
       setProcessing(false);
     }
-  }, [wallet, nft, recipient, isValidAddress, isSelf, addToast, invalidateAll]);
+  }, [wallet, evmAddress, nft, recipient, isValidAddress, isSelf, isPolygon, addToast, invalidateAll]);
 
   const handleClose = useCallback(() => {
     setRecipient('');
@@ -99,13 +136,22 @@ export default function TransferModal({ nft, isOpen, onClose }: TransferModalPro
 
   if (!isOpen) return null;
 
-  return (
+  const placeholder = isPolygon
+    ? 'Enter 0x... wallet address'
+    : 'Enter Solana wallet address...';
+
+  const invalidMsg = isPolygon
+    ? 'Invalid EVM address (must start with 0x)'
+    : 'Invalid Solana address';
+
+  const modalContent = (
     <AnimatePresence>
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+        className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+        style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)', backdropFilter: 'blur(4px)' }}
         onClick={handleClose}
       >
         <motion.div
@@ -113,7 +159,8 @@ export default function TransferModal({ nft, isOpen, onClose }: TransferModalPro
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.95, opacity: 0 }}
           transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-          className="w-full max-w-md bg-[var(--bg-secondary)] border border-[var(--border-color)] overflow-hidden"
+          className="w-full bg-[var(--bg-secondary)] border border-[var(--border-color)] overflow-hidden"
+          style={{ maxWidth: '28rem' }}
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
@@ -158,7 +205,7 @@ export default function TransferModal({ nft, isOpen, onClose }: TransferModalPro
                     <div>
                       <p className="text-xs font-semibold text-[var(--color-signal-orange)] mb-1">Confirm Transfer</p>
                       <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                        This action is irreversible. &quot;{nft.name}&quot; will be transferred to:
+                        This action is irreversible. &quot;{nft.name}&quot; will be transferred on {chainConfig.name} to:
                       </p>
                       <p className="text-xs font-[family-name:var(--font-mono)] text-[var(--accent)] mt-2 break-all">
                         {recipient}
@@ -189,25 +236,26 @@ export default function TransferModal({ nft, isOpen, onClose }: TransferModalPro
                 {/* NFT Preview */}
                 <div className="flex items-center gap-3 bg-[var(--bg-primary)] p-3 border border-[var(--border-color)]">
                   <div className="w-12 h-12 bg-[var(--bg-secondary)] overflow-hidden shrink-0">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={nft.image} alt={nft.name} className="w-full h-full object-cover" />
                   </div>
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-[var(--text-primary)] truncate">{nft.name}</p>
                     <p className="text-[10px] text-[var(--text-secondary)] font-[family-name:var(--font-mono)]">
-                      {nft.mint.slice(0, 16)}...
+                      {nft.mint.slice(0, 16)}... · <span style={{ color: chainConfig.color }}>{chainConfig.name}</span>
                     </p>
                   </div>
                 </div>
 
                 <Input
-                  label="Recipient Wallet Address"
-                  placeholder="Enter Solana wallet address..."
+                  label={`Recipient Wallet Address (${chainConfig.name})`}
+                  placeholder={placeholder}
                   value={recipient}
                   onChange={(e) => setRecipient(e.target.value.trim())}
                 />
 
                 {recipient && !isValidAddress && (
-                  <p className="text-xs text-[var(--color-crimson)]">Invalid Solana address</p>
+                  <p className="text-xs text-[var(--color-crimson)]">{invalidMsg}</p>
                 )}
                 {isSelf && (
                   <p className="text-xs text-[var(--color-signal-orange)]">Cannot transfer to yourself</p>
@@ -229,4 +277,10 @@ export default function TransferModal({ nft, isOpen, onClose }: TransferModalPro
       </motion.div>
     </AnimatePresence>
   );
+
+  if (typeof document !== 'undefined') {
+    return createPortal(modalContent, document.body);
+  }
+
+  return modalContent;
 }
