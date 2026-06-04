@@ -135,18 +135,36 @@ export default function WalletPickerModal({ isOpen, onClose }: WalletPickerModal
   const walletOptions: WalletOption[] = useMemo(() => {
     if (activeChain === 'polygon') {
       const seen = new Set<string>();
+
+      // Hide Phantom from Polygon list (Phantom is primarily Solana;
+      // showing it here confuses users even though it supports EVM).
+      // Also hide the generic "Injected" fallback when named wallets exist.
+      const isPhantom = (c: (typeof connectors)[number]) =>
+        c.id === 'app.phantom' ||
+        c.id === 'phantom' ||
+        c.name.toLowerCase() === 'phantom';
+
+      const isGenericInjected = (c: (typeof connectors)[number]) =>
+        c.id === 'injected' && (c.name === 'Injected' || !c.name);
+
+      const hasNamedConnectors = connectors.some(
+        (c) => !isPhantom(c) && !isGenericInjected(c)
+      );
+
       return connectors
         .filter((c) => {
-          if (c.id === 'injected' && connectors.some((cc) => cc.id !== 'injected' && cc.name !== 'Injected')) {
-            return false;
-          }
+          // Always hide Phantom on Polygon
+          if (isPhantom(c)) return false;
+          // Hide generic "Injected" when named wallets (MetaMask, Bitget, etc.) exist
+          if (isGenericInjected(c) && hasNamedConnectors) return false;
+          // Deduplicate by name
           if (seen.has(c.name)) return false;
           seen.add(c.name);
           return true;
         })
         .map((connector) => ({
-          name: connector.name || 'Unknown Wallet',
-          icon: connector.icon || (connector.name === 'MetaMask' ? '🦊' : '💎'),
+          name: connector.name || 'Wallet',
+          icon: connector.icon || '💎',
           detected: true,
           onClick: () => handlePolygonSelect(connector),
         }));
