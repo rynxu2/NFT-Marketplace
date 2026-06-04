@@ -40,6 +40,10 @@ export default function WalletPickerModal({ isOpen, onClose }: WalletPickerModal
   const [error, setError] = useState<string | null>(null);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Guard: prevent the click event that opened the modal from immediately
+  // closing it via the overlay backdrop handler (event bubbles through portal).
+  const openedAtRef = useRef<number>(0);
+
   // Auto-close when connection succeeds
   useEffect(() => {
     if (connected && connectingWallet) {
@@ -55,9 +59,10 @@ export default function WalletPickerModal({ isOpen, onClose }: WalletPickerModal
     };
   }, [connected, connectingWallet, onClose]);
 
-  // Reset state when modal opens
+  // Reset state when modal opens & record open timestamp
   useEffect(() => {
     if (isOpen) {
+      openedAtRef.current = Date.now();
       setConnectingWallet(null);
       setError(null);
     }
@@ -166,6 +171,10 @@ export default function WalletPickerModal({ isOpen, onClose }: WalletPickerModal
     <div
       className="wallet-picker-overlay"
       onClick={(e) => {
+        // Guard: ignore backdrop clicks within 150ms of modal opening.
+        // This prevents the Connect button's click event from bubbling
+        // through the React portal and immediately closing the modal.
+        if (Date.now() - openedAtRef.current < 150) return;
         if (e.target === e.currentTarget && !isConnecting) onClose();
       }}
     >
